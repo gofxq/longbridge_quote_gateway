@@ -1,0 +1,534 @@
+package http
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	nhttp "net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/go-querystring/query"
+
+	"github.com/longbridge/openapi-go/config"
+	"github.com/longbridge/openapi-go/log"
+)
+
+type apiResponse struct {
+	Code    int
+	Message string
+	Data    json.RawMessage
+	TraceID string
+	// RetryAfter comes from the Retry-After header, not the body.
+	RetryAfter time.Duration `json:"-"`
+}
+
+// UnmarshalJSON accepts `code` as either a JSON number or a numeric string:
+// the unified gateway reports its own errors (e.g. rate limiting) as
+// {"code":"459101",...}. Any other code value becomes 500.
+func (r *apiResponse) UnmarshalJSON(b []byte) error {
+	type plain apiResponse
+	aux := struct {
+		*plain
+		Code json.RawMessage
+	}{plain: (*plain)(r)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	r.Code = parseCode(aux.Code)
+	return nil
+}
+
+func parseCode(raw json.RawMessage) int {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	s := string(raw)
+	if raw[0] == '"' {
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nhttp.StatusInternalServerError
+		}
+	}
+	code, err := strconv.Atoi(s)
+	if err != nil {
+		return nhttp.StatusInternalServerError
+	}
+	return code
+}
+
+type otpResponse struct {
+	Otp string
+}
+
+// Client is a http client to access Longbridge REST OpenAPI
+type Client struct {
+	opts       *Options
+	httpClient *nhttp.Client
+}
+
+// RequestOptions use to set additional information for the request
+type RequestOptions struct {
+	// Request Header
+	Header nhttp.Header
+	body   interface{}
+	// Timeout overrides the request timeout for a single Call. Ignored by
+	// CallSSE (see its docs).
+	Timeout time.Duration
+}
+
+// RequestOption use to set addition info to request
+type RequestOption func(*RequestOptions)
+
+// WithHeader set request header
+func WithHeader(h nhttp.Header) RequestOption {
+	return func(o *RequestOptions) {
+		o.Header = h
+	}
+}
+
+// WithBody to set playload
+func WithBody(v interface{}) RequestOption {
+	return func(o *RequestOptions) {
+		if v != nil {
+			o.body = v
+		}
+	}
+}
+
+// WithRequestTimeout overrides the request timeout for a single Call, in
+// place of the timeout the underlying *http.Client was configured with.
+// Ignored by CallSSE, whose whole point is to keep receiving events for as
+// long as the underlying operation takes; only ctx cancellation bounds it.
+func WithRequestTimeout(d time.Duration) RequestOption {
+	return func(o *RequestOptions) {
+		if d > 0 {
+			o.Timeout = d
+		}
+	}
+}
+
+// region returns the data center region derived from the client's static
+// API-key credentials. For an OAuth session the region lives in the access
+// token, which can only be read with a context; region reports AP for OAuth
+// sessions. Use regionCtx wherever a context is available.
+func (c *Client) region() dcRegion {
+	if c.opts.OAuthClient != nil {
+		return dcRegionAp
+	}
+	return dcRegionFromCredentials(c.opts.AppKey, c.opts.AppSecret, c.opts.AccessToken)
+}
+
+// regionCtx returns the data center region of the current session. For an
+// OAuth session it reads the access token (refreshing it if needed), exactly
+// as Call does when deriving the x-dc-region header, and returns any error
+// from obtaining the token.
+func (c *Client) regionCtx(ctx context.Context) (dcRegion, error) {
+	if c.opts.OAuthClient != nil {
+		token, err := c.opts.OAuthClient.AccessToken(ctx)
+		if err != nil {
+			return dcRegionAp, err
+		}
+		return dcRegionFromCredential(token), nil
+	}
+	return dcRegionFromCredentials(c.opts.AppKey, c.opts.AppSecret, c.opts.AccessToken), nil
+}
+
+// IsUS reports whether the configured API-key credentials belong to the US
+// data center.
+//
+// Deprecated: IsUS cannot see the region of an OAuth session (it reports
+// false for every OAuth session). Use IsUSCtx.
+func (c *Client) IsUS() bool {
+	return c.region() == dcRegionUs
+}
+
+// IsUSCtx reports whether the current session belongs to the US data center.
+// For an OAuth session the region is derived from the access token's "us_"
+// prefix; an error is returned if the token cannot be obtained.
+func (c *Client) IsUSCtx(ctx context.Context) (bool, error) {
+	r, err := c.regionCtx(ctx)
+	if err != nil {
+		return false, err
+	}
+	return r == dcRegionUs, nil
+}
+
+// CheckRegion verifies that the configured API-key credentials' region matches
+// required. Returns *RegionRestrictedError if it does not; nil otherwise.
+// required must be "US" or "AP" (compared case-insensitively; anything
+// other than "US" means AP).
+//
+// Deprecated: CheckRegion treats every OAuth session as AP, so it blocks US
+// OAuth users from US-only APIs and never blocks them from AP-only ones. Use
+// CheckRegionCtx.
+func (c *Client) CheckRegion(path, required string) error {
+	return checkRegion(path, required, c.region())
+}
+
+// CheckRegionCtx verifies that the current session's region matches required.
+// For an OAuth session the region is derived from the access token, the same
+// way Call derives the x-dc-region header; an error from obtaining the token
+// is returned as is. Returns *RegionRestrictedError if the region does not
+// match; nil otherwise. required must be "US" or "AP" (compared
+// case-insensitively; anything other than "US" means AP).
+func (c *Client) CheckRegionCtx(ctx context.Context, path, required string) error {
+	cur, err := c.regionCtx(ctx)
+	if err != nil {
+		return err
+	}
+	return checkRegion(path, required, cur)
+}
+
+// checkRegion returns *RegionRestrictedError when cur does not satisfy required.
+func checkRegion(path, required string, cur dcRegion) error {
+	req := dcRegionAp
+	if strings.EqualFold(required, "US") {
+		req = dcRegionUs
+	}
+	if cur.allows(req) {
+		return nil
+	}
+	return &RegionRestrictedError{Path: path, Required: req.display(), Current: cur.display()}
+}
+
+// Get sends Get request with queryParams
+func (c *Client) Get(ctx context.Context, path string, queryParams url.Values, resp interface{}, ropts ...RequestOption) error {
+	return c.Call(ctx, "GET", path, queryParams, nil, resp, ropts...)
+}
+
+// Post sends Post request with json body
+func (c *Client) Post(ctx context.Context, path string, body interface{}, resp interface{}, ropts ...RequestOption) error {
+	return c.Call(ctx, "POST", path, nil, body, resp, ropts...)
+}
+
+// Put sends Put request with json body
+func (c *Client) Put(ctx context.Context, path string, body interface{}, resp interface{}, ropts ...RequestOption) error {
+	return c.Call(ctx, "PUT", path, nil, body, resp, ropts...)
+}
+
+// Delete sends Delete request with queryParams
+func (c *Client) Delete(ctx context.Context, path string, queryParams interface{}, resp interface{}, ropts ...RequestOption) error {
+	return c.Call(ctx, "DELETE", path, queryParams, nil, resp, ropts...)
+}
+
+// GetOTP to get one time password
+// Reference: https://open.longbridge.com/en/docs/socket-token-api
+func (c *Client) GetOTP(ctx context.Context, ropts ...RequestOption) (string, error) {
+	res := &otpResponse{}
+	err := c.Get(ctx, "/v1/socket/token", nil, res, ropts...)
+	if err != nil {
+		return "", err
+	}
+	return res.Otp, nil
+}
+
+func (c *Client) GetOTPV2(ctx context.Context, ropts ...RequestOption) (string, error) {
+	res := &otpResponse{}
+	err := c.Get(ctx, "/v2/socket/token", nil, res, ropts...)
+	if err != nil {
+		return "", err
+	}
+	return res.Otp, nil
+}
+
+// buildRequest builds and signs the underlying *http.Request shared by Call
+// and CallSSE: marshals the body, resolves auth (API key or OAuth) and the
+// DC region, sets headers and query params, and signs the request.
+func (c *Client) buildRequest(ctx context.Context, method, path string, queryParams interface{}, body interface{}, ro *RequestOptions) (req *nhttp.Request, bb []byte, err error) {
+	var br io.Reader
+
+	if body == nil && ro.body != nil {
+		body = ro.body
+	}
+
+	if body != nil {
+		bb, err = json.Marshal(body)
+		if err != nil {
+			return nil, nil, err
+		}
+		br = bytes.NewBuffer(bb)
+	}
+
+	req, err = nhttp.NewRequestWithContext(ctx, method, c.opts.URL+path, br)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	appKey := c.opts.AppKey
+	accessToken := c.opts.AccessToken
+	appSecret := c.opts.AppSecret
+	var region dcRegion
+	if c.opts.OAuthClient != nil {
+		token, err := c.opts.OAuthClient.AccessToken(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Derive DC region from the token prefix ("us_" → US, otherwise AP),
+		// then strip the prefix so only the bare token is sent to the gateway.
+		region = dcRegionFromCredential(token)
+		appKey = c.opts.OAuthClient.ClientID()
+		accessToken = "Bearer " + stripBearerPrefix(token)
+		appSecret = ""
+	} else {
+		// API-key auth: any of the three credentials may carry the region prefix.
+		region = dcRegionFromCredentials(appKey, appSecret, accessToken)
+		accessToken = stripBearerPrefix(accessToken)
+		appKey = stripBearerPrefix(appKey)
+	}
+
+	// set headers
+	req.Header.Add("accept-language", string(c.opts.Language))
+	req.Header.Add("x-api-key", appKey)
+	req.Header.Add("authorization", accessToken)
+	req.Header.Add(dcRegionHeader, region.asStr())
+	for k, v := range c.opts.ExtraHeaders {
+		req.Header.Set(k, v)
+	}
+	if ro.Header != nil {
+		for k, v := range ro.Header {
+			req.Header[k] = v
+		}
+	}
+	if len(bb) != 0 {
+		req.Header.Add("content-type", "application/json; charset=utf-8")
+	}
+
+	// set query params
+	if queryParams != nil {
+		vals, ok := queryParams.(url.Values)
+		if !ok {
+			if vals, err = query.Values(queryParams); err != nil {
+				return nil, nil, err
+			}
+		}
+		req.URL.RawQuery = vals.Encode()
+	}
+	// set signature (no-op for OAuth when appSecret is empty)
+	signature(req, appSecret, bb)
+
+	return req, bb, nil
+}
+
+// readErrorBody reads a non-streaming error response body and converts it
+// to an *ApiError. Shared by Call's non-2xx path and CallSSE's fallback path
+// (a request that asked for text/event-stream but got a one-shot JSON error
+// body instead, e.g. for a 4xx/5xx before the server committed to SSE).
+func readErrorBody(httpResp *nhttp.Response) error {
+	defer httpResp.Body.Close()
+	rb, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return err
+	}
+	log.Debugf("http call response body:%s", rb)
+
+	apiResp, err := decodeAPIResponse(httpResp, rb)
+	if err != nil {
+		return err
+	}
+	return NewError(httpResp.StatusCode, apiResp)
+}
+
+// decodeAPIResponse decodes a response body into an apiResponse. A non-200
+// body that isn't a valid JSON envelope (e.g. an empty or truncated 429)
+// keeps its raw text as the message, so the caller still gets an *ApiError
+// carrying the HTTP status rather than a decode error.
+func decodeAPIResponse(httpResp *nhttp.Response, rb []byte) (*apiResponse, error) {
+	traceID := httpResp.Header.Get("x-trace-id")
+	retryAfter := parseRetryAfter(httpResp.Header.Get("retry-after"))
+	apiResp := &apiResponse{TraceID: traceID, RetryAfter: retryAfter}
+	if !isJSON(httpResp.Header.Get("content-type")) {
+		apiResp.Message = string(rb)
+		return apiResp, nil
+	}
+	if err := jsonUnmarshal(bytes.NewReader(rb), apiResp); err != nil {
+		if httpResp.StatusCode == nhttp.StatusOK {
+			return nil, err
+		}
+		log.Debugf("http call decode error response body: %v", err)
+		return &apiResponse{TraceID: traceID, RetryAfter: retryAfter, Message: string(rb)}, nil
+	}
+	return apiResp, nil
+}
+
+// Call will send request with signature to http server
+func (c *Client) Call(ctx context.Context, method, path string, queryParams interface{}, body interface{}, resp interface{}, ropts ...RequestOption) (err error) {
+	ro := &RequestOptions{}
+	for _, opt := range ropts {
+		opt(ro)
+	}
+	if ro.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, ro.Timeout)
+		defer cancel()
+	}
+
+	// A rate-limited request was rejected before reaching the service, so
+	// it is safe to retry whatever the method.
+	delay := retryInitialDelay
+	for i := 0; ; i++ {
+		err = c.call(ctx, method, path, queryParams, body, resp, ro)
+		ae := rateLimitError(err)
+		if i == retryCount || ae == nil || ae.RetryAfter > maxRetryAfter {
+			return err
+		}
+		wait := delay
+		if ae.RetryAfter > 0 {
+			wait = ae.RetryAfter
+		}
+		log.Debugf("http call rate limited, retry in %v: %v", wait, err)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(wait):
+		}
+		delay *= retryFactor
+	}
+}
+
+// call sends a single request; see Call.
+func (c *Client) call(ctx context.Context, method, path string, queryParams interface{}, body interface{}, resp interface{}, ro *RequestOptions) (err error) {
+	req, bb, err := c.buildRequest(ctx, method, path, queryParams, body, ro)
+	if err != nil {
+		return err
+	}
+
+	log.Debugf("http call method:%v url:%v body:%v", req.Method, req.URL, string(bb))
+	httpResp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	log.Debugf("http call response headers:%v", httpResp.Header)
+	defer httpResp.Body.Close()
+
+	rb, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return err
+	}
+	log.Debugf("http call response body:%s", rb)
+
+	apiResp, err := decodeAPIResponse(httpResp, rb)
+	if err != nil {
+		return err
+	}
+	jsonBody := isJSON(httpResp.Header.Get("content-type"))
+
+	if httpResp.StatusCode != nhttp.StatusOK || apiResp.Code != 0 {
+		return NewError(httpResp.StatusCode, apiResp)
+	}
+
+	if resp == nil {
+		return
+	}
+	// A raw-message caller decides itself what an absent `data` means. Only
+	// for a JSON envelope: a non-JSON 200 (e.g. a proxy page) stays an error.
+	if raw, ok := resp.(*json.RawMessage); ok && jsonBody && len(apiResp.Data) == 0 {
+		*raw = nil
+		return nil
+	}
+
+	if err = jsonUnmarshal(bytes.NewReader(apiResp.Data), resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+// CallSSE sends a request with signature to the http server and, once the
+// server responds with a 200 text/event-stream, returns the raw response
+// body for the caller to read as a server-sent-events stream — instead of
+// buffering the whole response the way Call does. The caller must Close the
+// returned io.ReadCloser once done with it.
+//
+// A per-request timeout set via WithRequestTimeout is ignored here: an
+// event-stream response can legitimately keep delivering events for as long
+// as the underlying operation takes, so only ctx cancellation bounds it.
+func (c *Client) CallSSE(ctx context.Context, method, path string, body interface{}, ropts ...RequestOption) (io.ReadCloser, error) {
+	ro := &RequestOptions{}
+	for _, opt := range ropts {
+		opt(ro)
+	}
+
+	req, bb, err := c.buildRequest(ctx, method, path, nil, body, ro)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("accept", "text/event-stream")
+
+	log.Debugf("http call method:%v url:%v body:%v", req.Method, req.URL, string(bb))
+	httpResp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("http call response headers:%v", httpResp.Header)
+
+	if httpResp.StatusCode == nhttp.StatusOK && strings.Contains(httpResp.Header.Get("content-type"), "text/event-stream") {
+		return httpResp.Body, nil
+	}
+
+	// Error responses (and any other non-SSE response) are still a one-shot
+	// body, not SSE.
+	return nil, readErrorBody(httpResp)
+}
+
+func isJSON(ct string) bool {
+	return strings.Contains(ct, "application/json")
+}
+
+func jsonUnmarshal(r io.Reader, v interface{}) error {
+	d := json.NewDecoder(r)
+	d.UseNumber()
+	return d.Decode(v)
+}
+
+// New create http client to call Longbridge REST OpenAPI
+func New(opt ...Option) (*Client, error) {
+	opts := newOptions(opt...)
+	if opts.URL == "" {
+		return nil, errors.New("http url is empty")
+	}
+
+	cli := &nhttp.Client{
+		Timeout: opts.Timeout,
+		Transport: &nhttp.Transport{
+			IdleConnTimeout: 60 * time.Second,
+		},
+	}
+
+	if opts.Client != nil {
+		cli = opts.Client
+	}
+
+	client := &Client{
+		opts:       opts,
+		httpClient: cli,
+	}
+	return client, nil
+}
+
+// NewFromCfg init longbridge http client from *config.Config
+func NewFromCfg(c *config.Config) (*Client, error) {
+	url := c.HttpURL
+	if url == "" {
+		url = DefaultHttpUrl
+	}
+	opts := []Option{
+		WithTimeout(c.HTTPTimeout),
+		WithClient(c.Client),
+		WithURL(url),
+		WithLanguage(c.Language),
+		WithExtraHeaders(c.ExtraHeaders),
+	}
+	if c.OAuthClient != nil {
+		opts = append(opts, WithOAuthClient(c.OAuthClient))
+	} else {
+		opts = append(opts,
+			WithAccessToken(c.AccessToken),
+			WithAppKey(c.AppKey),
+			WithAppSecret(c.AppSecret),
+		)
+	}
+	return New(opts...)
+}

@@ -1,0 +1,538 @@
+{
+  "tested_at": "2026-11-13T12:25:09.348781+00:00",
+  "scope": "Real Longbridge account via local Docker Compose single instance; read-only market data",
+  "summary": {
+    "INFO": 1,
+    "PASS": 84
+  },
+  "automated_checks": [
+    "go vet ./...",
+    "go test -race ./...",
+    "SDK turnover regression",
+    "Python script compilation",
+    "git diff --check"
+  ],
+  "deployment_fix": "Compose explicitly binds HTTP_ADDR=:12280 inside container; published host address remains 127.0.0.1:12280",
+  "observations": {
+    "credential_values_found_in_container_logs": false,
+    "panic_found_in_container_logs": false,
+    "container_memory_snapshot_mib": 11.25,
+    "container_memory_limit_mib": 256,
+    "cold_concurrent_requests": 40,
+    "cold_concurrent_upstream_calls": 1,
+    "burst_requests": 100,
+    "burst_success": 61,
+    "burst_rate_limited": 39,
+    "warm_client_p50_ms": 2.4,
+    "warm_client_p95_ms": 5.15,
+    "service_left_running": true
+  },
+  "limits": [
+    "Resource usage is a snapshot, not a long-duration or maximum-memory stress test.",
+    "OAuth refresh was not exercised; configured API-key authentication was tested.",
+    "Simulated provider unit tests cover capacity exhaustion and failure modes that cannot safely or reliably be forced in a live account."
+  ],
+  "checks": [
+    {
+      "test": "health/readiness",
+      "status": "PASS"
+    },
+    {
+      "test": "authentication",
+      "status": "PASS"
+    },
+    {
+      "test": "authentication",
+      "status": "PASS"
+    },
+    {
+      "test": "metrics protected",
+      "status": "PASS"
+    },
+    {
+      "test": "OpenAPI",
+      "status": "PASS"
+    },
+    {
+      "test": "quotes: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "quotes",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 293.88,
+        "errors": []
+      }
+    },
+    {
+      "test": "quotes: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "normalization/order/dedup",
+      "status": "PASS"
+    },
+    {
+      "test": "single_quote: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "single_quote",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 4.05,
+        "errors": []
+      }
+    },
+    {
+      "test": "single_quote: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "single/batch cache shared",
+      "status": "PASS"
+    },
+    {
+      "test": "securities: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "securities",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 920.35,
+        "errors": []
+      }
+    },
+    {
+      "test": "securities: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "candlesticks: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "candlesticks",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 299.21,
+        "errors": []
+      }
+    },
+    {
+      "test": "candlesticks: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "candlesticks: ascending timestamps",
+      "status": "PASS"
+    },
+    {
+      "test": "history: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "history",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 310.87,
+        "errors": []
+      }
+    },
+    {
+      "test": "history: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "history: ascending timestamps",
+      "status": "PASS"
+    },
+    {
+      "test": "history range/truncation",
+      "status": "PASS"
+    },
+    {
+      "test": "history cached metadata",
+      "status": "PASS"
+    },
+    {
+      "test": "intraday: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "intraday",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 565.5,
+        "errors": []
+      }
+    },
+    {
+      "test": "intraday: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "depth: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "depth",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 288.06,
+        "errors": []
+      }
+    },
+    {
+      "test": "depth: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "trades: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "trades",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 292.88,
+        "errors": []
+      }
+    },
+    {
+      "test": "trades: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "calc_indexes: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "calc_indexes",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 294.18,
+        "errors": []
+      }
+    },
+    {
+      "test": "calc_indexes: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "trading_sessions: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "trading_sessions",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 288.13,
+        "errors": []
+      }
+    },
+    {
+      "test": "trading_sessions: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "trading_days: envelope",
+      "status": "PASS"
+    },
+    {
+      "test": "trading_days",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 359.8,
+        "errors": []
+      }
+    },
+    {
+      "test": "trading_days: cache",
+      "status": "PASS"
+    },
+    {
+      "test": "decimal price/change",
+      "status": "PASS"
+    },
+    {
+      "test": "market 700.HK",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "market 600519.SH",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "market 000001.SZ",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "invalid /api/v1/quotes",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/quotes",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/quotes",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/candlesticks",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/candlesticks",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/candlesticks/history",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/quotes",
+      "status": "PASS"
+    },
+    {
+      "test": "invalid /api/v1/quotes",
+      "status": "PASS"
+    },
+    {
+      "test": "partial failure preserves cached success",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "PARTIAL_SUCCESS",
+        "errors": ["SYMBOL_DATA_MISSING"]
+      }
+    },
+    {
+      "test": "all failed batch",
+      "status": "PASS"
+    },
+    {
+      "test": "40 concurrent cold requests coalesced",
+      "status": "PASS",
+      "detail": {
+        "upstream_calls": 1.0,
+        "success": 40
+      }
+    },
+    {
+      "test": "100 request burst limited",
+      "status": "PASS",
+      "detail": {
+        "200": 61,
+        "429": 39
+      }
+    },
+    {
+      "test": "warm latency samples",
+      "status": "PASS",
+      "detail": {
+        "p50_ms": 2.4,
+        "p95_ms": 5.15
+      }
+    },
+    {
+      "test": "TTL expiry wait",
+      "status": "INFO",
+      "detail": {
+        "seconds": 53.0
+      }
+    },
+    {
+      "test": "TTL expiry refetch",
+      "status": "PASS"
+    },
+    {
+      "test": "no pending work",
+      "status": "PASS"
+    },
+    {
+      "test": "cache memory budget",
+      "status": "PASS"
+    },
+    {
+      "test": "period 1m",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 5m",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 15m",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 30m",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 1d",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 1w",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 1mo",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "period 1y",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK"
+      }
+    },
+    {
+      "test": "1000 recent candles",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "rows": 1000,
+        "latency_ms": 876.1
+      }
+    },
+    {
+      "test": "history 1000 truncation",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "rows": 1000,
+        "latency_ms": 606.67
+      }
+    },
+    {
+      "test": "history large cache",
+      "status": "PASS"
+    },
+    {
+      "test": "1000 trades",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "rows": 1000
+      }
+    },
+    {
+      "test": "calendar HK",
+      "status": "PASS"
+    },
+    {
+      "test": "calendar CN",
+      "status": "PASS"
+    },
+    {
+      "test": "network interruption recovery",
+      "status": "PASS",
+      "detail": {
+        "seconds": 0.71,
+        "attempts": [
+          {
+            "http": 200,
+            "code": "OK"
+          }
+        ]
+      }
+    },
+    {
+      "test": "container restart readiness",
+      "status": "PASS",
+      "detail": {
+        "seconds": 3.01
+      }
+    },
+    {
+      "test": "restart clears cache",
+      "status": "PASS"
+    },
+    {
+      "test": "restart first quote cold",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "code": "OK",
+        "latency_ms": 291.96
+      }
+    },
+    {
+      "test": "restart second quote cached",
+      "status": "PASS"
+    },
+    {
+      "test": "container hardening",
+      "status": "PASS"
+    }
+  ]
+}

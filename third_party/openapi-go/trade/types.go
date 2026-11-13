@@ -1,0 +1,505 @@
+package trade
+
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/longbridge/openapi-go"
+)
+
+type (
+	OrderType            string
+	OrderSide            string
+	OutsideRTH           string // Outside regular trading hours
+	OrderStatus          string
+	Market               string
+	OrderTag             string
+	TriggerStatus        string
+	TriggerPriceType     string
+	BalanceType          int32
+	OfDirection          int32
+	TimeType             string
+	CommissionFreeStatus string
+	DeductionStatus      string
+	ChargeCategoryCode   string
+	Currency             string
+	AttachedOrderType    string // Attached order type (take-profit / stop-loss / bracket)
+	MultiLegStrategy     string // Multi-leg option combination strategy
+	MultiLegPosition     string // Multi-leg leg position direction (long / short)
+	ContractDirection    string // Option contract type (call / put)
+)
+
+const (
+	// Balance type
+	BalanceTypeUnknown BalanceType = 0 // unknown type
+	BalanceTypeCash    BalanceType = 1 // cash
+	BalanceTypeStock   BalanceType = 2 // stock
+	BalanceTypeFund    BalanceType = 3 // fund
+
+	// Outflow direction
+	OfDirectionUnkown OfDirection = 0
+	OfDirectionOut    OfDirection = 1 // outflow
+	OfDirectionIn     OfDirection = 2 // inflow
+
+	// Time force in type
+	TimeTypeDay TimeType = "Day" // Day Order
+	TimeTypeGTC TimeType = "GTC" // Good Til Canceled Order
+	TimeTypeGTD TimeType = "GTD" // Good Til Date Order
+
+	// Order type
+	OrderTypeLO      OrderType = "LO"      // Limit Order
+	OrderTypeELO     OrderType = "ELO"     // Enhanced Limit Order
+	OrderTypeMO      OrderType = "MO"      // Market Order
+	OrderTypeAO      OrderType = "AO"      // At-auction Order
+	OrderTypeALO     OrderType = "ALO"     // At-auction Limit Order
+	OrderTypeODD     OrderType = "ODD"     // Odd Lots Order
+	OrderTypeLIT     OrderType = "LIT"     // Limit If Touched
+	OrderTypeMIT     OrderType = "MIT"     // Market If Touched
+	OrderTypeTSLPAMT OrderType = "TSLPAMT" // Trailing Limit If Touched (Trailing Amount)
+	OrderTypeTSLPPCT OrderType = "TSLPPCT" // Trailing Limit If Touched (Trailing Percent)
+	OrderTypeTSMAMT  OrderType = "TSMAMT"  // Trailing Market If Touched (Trailing Amount)
+	OrderTypeTSMPCT  OrderType = "TSMPCT"  // Trailing Market If Touched (Trailing Percent)
+	OrderTypeSLO     OrderType = "SLO"     // SLO order
+
+	// Order side
+	OrderSideUnknown OrderSide = "" // Side not reported by the server
+	OrderSideBuy     OrderSide = "Buy"
+	OrderSideSell    OrderSide = "Sell"
+
+	// Order status
+	OrderNotReported          OrderStatus = "NotReported"
+	OrderReplacedNotReported  OrderStatus = "ReplacedNotReported"
+	OrderProtectedNotReported OrderStatus = "ProtectedNotReported"
+	OrderVarietiesNotReported OrderStatus = "VarietiesNotReported"
+	OrderFilledStatus         OrderStatus = "FilledStatus"
+	OrderWaitToNew            OrderStatus = "WaitToNew"
+	OrderNewStatus            OrderStatus = "NewStatus"
+	OrderWaitToReplace        OrderStatus = "WaitToReplace"
+	OrderPendingReplaceStatus OrderStatus = "PendingReplaceStatus"
+	OrderReplacedStatus       OrderStatus = "ReplacedStatus"
+	OrderPartialFilledStatus  OrderStatus = "PartialFilledStatus"
+	OrderWaitToCancel         OrderStatus = "WaitToCancel"
+	OrderPendingCancelStatus  OrderStatus = "PendingCancelStatus"
+	OrderRejectedStatus       OrderStatus = "RejectedStatus"
+	OrderCanceledStatus       OrderStatus = "CanceledStatus"
+	OrderExpiredStatus        OrderStatus = "ExpiredStatus"
+	OrderPartialWithdrawal    OrderStatus = "PartialWithdrawal"
+	// OrderDelayedNotReported is the status of a time-condition order that is being held
+	// and has not yet been reported to the exchange.
+	OrderDelayedNotReported OrderStatus = "DelayedNotReported"
+
+	// Outside RTH
+	OutsideRTHOnly            OutsideRTH = "RTH_ONLY"          // Regular trading hour only
+	OutsideRTHAny             OutsideRTH = "ANY_TIME"          // Any time
+	OutsideRTHOvernight       OutsideRTH = "OVERNIGHT"         // Overnight
+	OutsideRTHOptionPreMarket OutsideRTH = "OPTION_PRE_MARKET" // Overnight option
+	OutsideRTHUnknown         OutsideRTH = "UnknownOutsideRth" // Default is UnknownOutsideRth when the order is not a US stock
+
+	// Order tag
+	OrderTagNormal   OrderTag = "Normal" // Normal Order
+	OrderTagLongTerm OrderTag = "Gtc"    // Long term Order
+	OrderTagGrey     OrderTag = "Grey"   // Grey Order
+
+	// Trigger status
+	TriggerStatusDeactive TriggerStatus = "DEACTIVE"
+	TriggerStatusActive   TriggerStatus = "ACTIVE"
+	TriggerStatusReleased TriggerStatus = "RELEASED"
+
+	// Trigger price type
+	TriggerPriceTypeLimit  TriggerPriceType = "LIT" // Limit If Touched
+	TriggerPriceTypeMarket TriggerPriceType = "MIT" // Market If Touched
+
+	// Commission-free Status
+	CommissionFreeStatusNone      CommissionFreeStatus = "None"
+	CommissionFreeStatusCaculated CommissionFreeStatus = "Calculated" // Commission-free amount to be calculated
+	CommissionFreeStatusPending   CommissionFreeStatus = "Pending"    // Pending commission-free
+	CommissionFreeStatusReady     CommissionFreeStatus = "Ready"      // Commission-free applied
+
+	// Deduction status/Cashback Status
+	DeductionStatusNone    DeductionStatus = "NONE"
+	DeductionStatusNoData  DeductionStatus = "NO_DATA"
+	DeductionStatusPending DeductionStatus = "PENDING"
+	DeductionStatusDone    DeductionStatus = "DONE"
+
+	// Charge category code
+	ChargeCategoryCodeUnknown    ChargeCategoryCode = "UNKNOWN"
+	ChargeCategoryCodeBrokerFees ChargeCategoryCode = "BROKER_FEES"
+	ChargeCategoryCodeThirdFees  ChargeCategoryCode = "THIRD_FEES"
+
+	// Currency
+	CurrencyHKD     Currency = "HKD"
+	CurrencyUSD     Currency = "USD"
+	CurrencyCNH     Currency = "CNH"
+	CurrencyDefault Currency = ""
+
+	// Attached order type
+	AttachedOrderTypeProfitTaker AttachedOrderType = "PROFIT_TAKER" // Take profit
+	AttachedOrderTypeStopLoss    AttachedOrderType = "STOP_LOSS"    // Stop loss
+	AttachedOrderTypeBracket     AttachedOrderType = "BRACKET"      // Bracket order (profit-taker + stop-loss)
+
+	// Multi-leg strategy
+	MultiLegStrategyUnknown            MultiLegStrategy = "Unknown"
+	MultiLegStrategyCoveredCall        MultiLegStrategy = "CoveredCall"        // Covered call (covered stock)
+	MultiLegStrategyCoveredPut         MultiLegStrategy = "CoveredPut"         // Covered put (covered stock)
+	MultiLegStrategyVerticalCallSpread MultiLegStrategy = "VerticalCallSpread" // Vertical call spread
+	MultiLegStrategyVerticalPutSpread  MultiLegStrategy = "VerticalPutSpread"  // Vertical put spread
+	MultiLegStrategyCollar             MultiLegStrategy = "Collar"             // Collar
+	MultiLegStrategyStraddle           MultiLegStrategy = "Straddle"           // Straddle
+	MultiLegStrategyStrangle           MultiLegStrategy = "Strangle"           // Strangle
+	MultiLegStrategyCalendarCallSpread MultiLegStrategy = "CalendarCallSpread" // Calendar (horizontal) call spread
+	MultiLegStrategyCalendarPutSpread  MultiLegStrategy = "CalendarPutSpread"  // Calendar (horizontal) put spread
+
+	// Multi-leg position direction
+	MultiLegPositionUnknown MultiLegPosition = "Unknown"
+	MultiLegPositionLong    MultiLegPosition = "LONG"
+	MultiLegPositionShort   MultiLegPosition = "SHORT"
+
+	// Option contract type
+	ContractDirectionUnknown ContractDirection = "Unknown"
+	ContractDirectionCall    ContractDirection = "C"
+	ContractDirectionPut     ContractDirection = "P"
+)
+
+// Execution is execution details
+type Execution struct {
+	OrderId     string
+	TradeId     string
+	Symbol      string
+	TradeDoneAt time.Time
+	Quantity    string
+	Price       *decimal.Decimal
+	// Side is the buy/sell direction of the fill. It is OrderSideUnknown ("")
+	// when the response omits it, as GET /v1/trade/execution/history does for
+	// Longbridge US accounts.
+	Side OrderSide
+}
+
+// Executions has a Execution list
+type Executions struct {
+	Trades []*Execution
+}
+
+// AllExecutionsResponse is the response for get all executions request
+type AllExecutionsResponse struct {
+	HasMore bool
+	Trades  []*Execution
+}
+
+// Orders has a Order details
+type Orders struct {
+	HasMore bool
+	Orders  []*Order
+}
+
+// Order is order details
+type Order struct {
+	OrderId          string
+	Status           OrderStatus
+	StockName        string
+	Quantity         string
+	ExecutedQuantity string
+	Price            *decimal.Decimal
+	ExecutedPrice    *decimal.Decimal
+	SubmittedAt      string
+	Side             OrderSide
+	Symbol           string
+	OrderType        OrderType
+	LastDone         *decimal.Decimal
+	TriggerPrice     *decimal.Decimal
+	Msg              string
+	Tag              OrderTag
+	TimeInForce      TimeType
+	ExpireDate       string
+	UpdatedAt        string
+	TriggerAt        string
+	TrailingAmount   *decimal.Decimal
+	TrailingPercent  *decimal.Decimal
+	LimitOffset      *decimal.Decimal
+	TriggerStatus    TriggerStatus
+	Currency         string
+	OutsideRth       OutsideRTH
+	Remark           string
+	DelayedUntil     string // Time-condition submit time (unix timestamp seconds), "0" (or empty if the server omits the field) when not a time-condition order
+	AttachedOrders   []AttachedOrderDetail
+	// MultiLeg is present only for multi-leg option combination orders.
+	MultiLeg *MultiLegInfo
+}
+
+// MultiLegInfo is multi-leg option combination order information.
+type MultiLegInfo struct {
+	Strategy     MultiLegStrategy // Multi-leg strategy
+	StrategyName string           // Strategy name
+	MultilegId   string           // Multi-leg combination ID
+	Code         string           // Multi-leg combination code
+	Legs         []MultiLegOrderLeg
+}
+
+// MultiLegOrderLeg is a single leg of a multi-leg combination order.
+type MultiLegOrderLeg struct {
+	Symbol            string // Option symbol, in ticker.region format
+	Side              OrderSide
+	Position          MultiLegPosition
+	RatioQuantity     decimal.Decimal
+	StrikePrice       *decimal.Decimal
+	ExpireDate        string // Option expiry date, format YYYY-MM-DD
+	ContractDirection ContractDirection
+}
+
+// AttachedOrderDetail is an attached (take-profit / stop-loss) sub-order of a bracket order.
+type AttachedOrderDetail struct {
+	OrderId             string
+	AttachedTypeDisplay AttachedOrderType // Actual type of this sub-order: ProfitTaker or StopLoss
+	TriggerPrice        *decimal.Decimal
+	Quantity            decimal.Decimal
+	ExecutedQty         decimal.Decimal
+	Status              OrderStatus
+	UpdatedAt           string // raw unix-second string
+	Withdrawn           bool
+	Gtd                 string // GTD expiry date, format YYYY-MM-DD
+	TimeInForce         TimeType
+	CounterId           string
+	TriggerStatus       TriggerStatus
+	ExecutedAmount      decimal.Decimal
+	Tag                 OrderTag
+	SubmittedAt         string // raw unix-second string
+	ExecutedPrice       *decimal.Decimal
+	ForceOnlyRTH        OutsideRTH
+	Reviewed            bool
+	ActivateOrderType   OrderType // Order type to submit after trigger
+	ActivateRTH         OutsideRTH
+	SubmitPrice         *decimal.Decimal // Submit (limit) price for the activated order
+	LimitDepthLevel     int32            // Bid/ask depth level of the limit order submitted price (0 when not set)
+}
+
+type OrderChargeItem struct {
+	Code ChargeCategoryCode
+	Name string
+	Fees []OrderChargeFee
+}
+
+type OrderChargeDetail struct {
+	TotalAmount decimal.Decimal
+	Currency    string
+	Items       []OrderChargeItem
+}
+
+type OrderChargeFee struct {
+	Code ChargeCategoryCode
+	Name string
+	Fees []OrderChargeFee
+}
+
+type OrderHistoryDetail struct {
+	// Executed price for executed orders, submitted price for expired,
+	// canceled, rejected orders, etc.
+	Price decimal.Decimal
+	// Executed quantity for executed orders, remaining quantity for expired,
+	// canceled, rejected orders, etc.
+	Quantity int64
+	Status   OrderStatus
+	Msg      string // Execution or error message
+	Time     string // Occurrence time
+}
+
+type OrderDetail struct {
+	OrderId                  string
+	Status                   OrderStatus
+	StockName                string
+	Quantity                 int64 // Submitted quantity
+	ExecutedQuantity         int64
+	Price                    *decimal.Decimal // Submitted price
+	ExecutedPrice            *decimal.Decimal
+	SubmittedAt              string    // Submitted time
+	Side                     OrderSide /// Order side
+	Symbol                   string
+	OrderType                OrderType
+	LastDone                 *decimal.Decimal
+	TriggerPrice             *decimal.Decimal
+	Msg                      string // Rejected Message or remark
+	Tag                      OrderTag
+	TimeInForce              TimeType
+	ExpireDate               string
+	UpdatedAt                string
+	TriggerAt                string // Conditional order trigger time
+	TrailingAmount           *decimal.Decimal
+	TrailingPercent          *decimal.Decimal
+	LimitOffset              *decimal.Decimal
+	TriggerStatus            TriggerStatus
+	Currency                 string
+	OutsideRth               OutsideRTH /// Enable or disable outside regular trading hours
+	Remark                   string
+	DelayedUntil             string // Time-condition submit time (unix timestamp seconds), "0" (or empty if the server omits the field) when not a time-condition order
+	FreeStatus               CommissionFreeStatus
+	FreeAmount               *decimal.Decimal
+	FreeCurrency             string
+	DeductionsStatus         DeductionStatus
+	DeductionsAmount         *decimal.Decimal
+	DeductionsCurrency       string
+	PlatformDeductedStatus   DeductionStatus
+	PlatformDeductedAmount   *decimal.Decimal
+	PlatformDeductedCurrency string
+	History                  OrderHistoryDetail
+	// ChargeDetail is nil for attached (take-profit / stop-loss) sub-orders.
+	ChargeDetail   *OrderChargeDetail
+	AttachedOrders []AttachedOrderDetail
+	// MultiLeg is present only for multi-leg option combination orders.
+	MultiLeg *MultiLegInfo
+}
+
+// AccountBalances has a AccountBalance list
+type AccountBalances struct {
+	List []*AccountBalance
+}
+
+// AccountBalance is user account balance
+type AccountBalance struct {
+	TotalCash              *decimal.Decimal
+	MaxFinanceAmount       *decimal.Decimal
+	RemainingFinanceAmount *decimal.Decimal
+	RiskLevel              string
+	MarginCall             *decimal.Decimal
+	NetAssets              *decimal.Decimal // net asset
+	InitMargin             *decimal.Decimal // initial margin
+	MaintenanceMargin      *decimal.Decimal // maintenance margin
+	Currency               string
+	BuyPower               *decimal.Decimal
+	CashInfos              []*CashInfo
+}
+
+// FundPositions has a FundPosition list
+type FundPositions struct {
+	List []*FundPositionChannel
+}
+
+// FundPositionChannel is a account channel's fund position details
+type FundPositionChannel struct {
+	AccountChannel string
+	Positions      []*FundPosition
+}
+
+// FundPosition is fund position details
+type FundPosition struct {
+	CounterID            string
+	CurrentNetAssetValue *decimal.Decimal
+	NetAssetValueDay     int64
+	SymbolName           string
+	Currency             string
+	CostNetAssetValue    *decimal.Decimal
+	HoldingUnits         *decimal.Decimal
+}
+
+// StockPositions has a StockPosition list
+type StockPositions struct {
+	List []*StockPositionChannel
+}
+
+// StockPositionChannel is a account channel's stock positions details
+type StockPositionChannel struct {
+	AccountChannel string
+	Positions      []*StockPosition
+}
+
+// StockPosition is user stock position details
+type StockPosition struct {
+	Symbol            string
+	SymbolName        string
+	Quantity          string
+	AvailableQuantity string
+	Currency          string
+	CostPrice         *decimal.Decimal
+	Market            openapi.Market
+}
+
+// CashFlows has a CashFlow list
+type CashFlows struct {
+	List []*CashFlow
+}
+
+// CashFlow is cash flow details
+type CashFlow struct {
+	TransactionFlowName string
+	Direction           OfDirection
+	BusinessType        BalanceType
+	Balance             *decimal.Decimal
+	Currency            string
+	BusinessTime        string
+	Symbol              string
+	Description         string
+}
+
+// CashInfo
+type CashInfo struct {
+	WithdrawCash  *decimal.Decimal
+	AvailableCash *decimal.Decimal
+	FrozenCash    *decimal.Decimal
+	SettlingCash  *decimal.Decimal
+	Currency      string
+}
+
+// PushEvent is quote context callback event
+type PushEvent struct {
+	Event string
+	Data  *PushOrderChanged
+}
+
+// PushOrderChanged is order change event details
+type PushOrderChanged struct {
+	AccountNo        string
+	Currency         string
+	ExecutedPrice    *decimal.Decimal
+	ExecutedQuantity *decimal.Decimal
+	LastPrice        *decimal.Decimal
+	LastShare        *decimal.Decimal
+	LimitOffset      string
+	Msg              string
+	OrderId          string
+	OrderType        OrderType
+	Side             OrderSide
+	Status           OrderStatus
+	StockName        string
+	SubmittedAt      string
+	Price            *decimal.Decimal
+	Quantity         *decimal.Decimal
+	Symbol           string
+	Tag              OrderTag
+	TrailingAmount   *decimal.Decimal
+	TrailingPercent  string
+	TriggerAt        string
+	TriggerPrice     *decimal.Decimal
+	TriggerStatus    TriggerStatus
+	UpdatedAt        string
+	Remark           string
+	// MultiLeg is present only for multi-leg option combination orders.
+	MultiLeg *MultiLegInfo
+}
+
+// SubResponse is subscribe function response
+type SubResponse struct {
+	Success []string
+	Fail    []*SubResponseFail
+	Current []string
+}
+
+// SubResponseFail contains subscribe failed reason
+type SubResponseFail struct {
+	Topic  string
+	Reason string
+}
+
+type UnsubResponse struct {
+	Current []string
+}
+
+// MarginRatio contains some ratio
+type MarginRatio struct {
+	ImFactor *decimal.Decimal // Initial margin ratio
+	MmFactor *decimal.Decimal // Maintain the initial margin ratio
+	FmFactor *decimal.Decimal // Forced close-out margin ratio
+}
+
+// EstimateMaxPurchaseQuantity is response for estimate maximum purchase quantity
+type EstimateMaxPurchaseQuantityResponse struct {
+	CashMaxQty   int64 // Cash available quantity
+	MarginMaxQty int64 // Margin available quantity
+}

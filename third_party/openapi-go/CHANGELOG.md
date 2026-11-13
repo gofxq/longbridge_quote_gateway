@@ -1,0 +1,345 @@
+# Changelog
+
+## [Unreleased]
+
+## [v0.30.1] - 2026-11-02
+
+### Added
+
+- `http.CodeGatewayRateLimited` (`459101`): the code that the unified gateway returns when it rejects a request because of a rate limit.
+- `http.ApiError.RetryAfter`: how long the server asked the client to wait, read from the `Retry-After` response header. It is `0` when the header is absent.
+
+### Changed
+
+- **`http.Client.Call` retries rate-limited requests** (#137). A request is rate-limited when the response has HTTP status 429 or code `459101`. `Call` retries it up to 5 times, with a delay that starts at 100ms and doubles each time. This matches the Rust SDK.
+  - If the response has a `Retry-After` header, `Call` waits that long instead. The header can be a number of seconds, an HTTP date, or a Go duration such as `1.5s`, which is the form the OpenAPI gateway sends.
+  - If `Retry-After` is longer than 10s, `Call` returns the error at once and does not retry.
+  - `Call` retries every HTTP method, POST included. The gateway rejects a rate-limited request before it forwards the request to a service.
+  - Each attempt builds and signs the request again. When `ctx` is done (this includes `WithRequestTimeout`), `Call` stops and returns the last error.
+  - `CallSSE` does not retry.
+- A non-200 response whose JSON body cannot be decoded (for example, an empty or truncated body) now returns an `*http.ApiError`. The error keeps the HTTP status and the trace ID, and its `Message` is the raw body. Before, `Call` returned the JSON decode error.
+
+### Fixed
+
+- **A string error code no longer causes a decode failure** (#137). The unified gateway reports rate-limit errors with a string code, for example `{"code":"459101","message":"request too many"}`. Before, decoding this body failed. Now a code that is a number or a numeric string becomes an `int`. Any other value becomes `500`.
+
+## [v0.30.0] - 2026-10-23
+
+### Added
+
+- **US account asset APIs** (ports longbridge/openapi#613) — four `TradeContext` methods, all US-only (they return `*http.RegionRestrictedError` for non-US credentials without sending a request):
+  - `USCashAndBuyPower(ctx, currency)` — `GET /v1/us/assets/cash-and-buy-power`: buying power (`USBuyLimitInfo`), cash per currency (`USCashDetail`) and margin status (`USMarginStatus`)
+  - `USAvailableHolding(ctx, *GetUSAvailableHolding)` — `GET /v1/us/assets/available-holding`: quantity of a stock / option / crypto holding available to trade; `EquityType` defaults to `STOCK`, `PositionSide` to `LONG`
+  - `USTransactionHistory(ctx, *GetUSTransactionHistory)` — `POST /v1/us/assets/transaction-history`: one page of account transactions between `StartAt` and `EndAt` (both required), with optional `Types` / `Currency` filters; `Page` defaults to 1, `Size` to 20. `Symbol` is the user-facing symbol (e.g. `BTCUSD.BKKT`); `CreateAt` / `DoneAt` are read from unix seconds (number or string) as `time.Time`, and `CurrentPage` accepts a number or a numeric string
+  - `USExchangeRates(ctx)` — `GET /v1/us/assets/exchange-rates`: the upstream two-level map is flattened into `USExchangeRates.Exchanges`, sorted by the two upstream map keys, which are kept on each entry as `UniversalKey` / `SpecKey`; rates accept a JSON number or string and are empty when absent
+- `OrderSideUnknown` (`""`) — the `OrderSide` value of `Execution.Side` when the response omits `side`, as `GET /v1/trade/execution/history` does for Longbridge US accounts. Its value is the empty string, unlike most other enums, whose unknown value is `"Unknown"`, so logs and `fmt` output show an empty side
+
+### Changed
+
+- `TradeContext.FundPositions` and `TradeContext.MarginRatio` are AP-only: US data-center accounts have no fund holdings or margin-ratio data, so with US credentials they now return `*http.RegionRestrictedError` instead of an opaque server error. There is no US equivalent of `FundPositions`; for margin, US accounts can read `USCashAndBuyPower(...).MarginStatus`
+- `TradeContext.AllExecutions` is AP-only: `GET /v3/trade/execution/all` returns HTTP 500 (code 12) for US data-center accounts, so with US credentials it now returns `*http.RegionRestrictedError` without sending the request. US accounts should use `HistoryExecutions` (`GET /v1/trade/execution/history`), which works in both regions
+- `TradeContext.OrderDetail` and `TradeContext.OrderDetailAttached` are AP-only: `GET /v1/trade/order` returns HTTP 500 for US data-center accounts (the order gateway panics on US orders), so with US credentials they now return `*http.RegionRestrictedError` without sending the request. US accounts should use `USOrderDetail`
+- `TradeContext.AccountBalance`, `TradeContext.CashFlow`, `TradeContext.StockPositions` and `PortfolioContext.ExchangeRate` are AP-only: `/v1/asset/account`, `/v1/asset/cashflow`, `/v1/asset/stock` and `/v1/asset/exchange_rates` fail with code 12 for US data-center accounts, so US sessions now get `*http.RegionRestrictedError` without sending the request. US alternatives: `USCashAndBuyPower` / `USAssetOverview` (balance), `USTransactionHistory` (cash flow), `USAssetOverview` (stock positions), `USExchangeRates` (exchange rates)
+- `http.Client.CheckRegionCtx(ctx, path, required)` and `http.Client.IsUSCtx(ctx)` resolve the region of an OAuth session from its access token (`us_` prefix → US), the same way requests derive the `x-dc-region` header; every region guard in the SDK now uses them. `CheckRegion` and `IsUS` are kept for compatibility but deprecated, because they cannot see an OAuth session's region and report AP for it
+- **`*http.RegionRestrictedError.Error()` gained a suffix naming the alternative by HTTP endpoint** — the existing message is kept unchanged as a prefix and `; <hint>` is appended, so a caller (or an LLM agent) can recover without a lookup; code that compares the message by exact equality must be updated (prefix matching keeps working). The text matches the Rust SDK and names endpoints rather than methods, since it is shared by bindings and MCP servers with different method names. US-region accounts calling an AP-only path: `/v1/asset/account` → `GET /v1/us/assets/cash-and-buy-power` or `GET /v1/us/assets/overview`; `/v1/asset/cashflow` → `POST /v1/us/assets/transaction-history`; `/v1/asset/stock` → `GET /v1/us/assets/overview`; `/v1/asset/exchange_rates` → `GET /v1/us/assets/exchange-rates` (TradeContext US methods); `/v1/trade/order` → `GET /v1/us/orders/{order_id}`; `/v3/trade/execution/all` → `GET /v1/trade/execution/history`; `/v1/risk/margin-ratio` → no US equivalent (account-level margin: `GET /v1/us/assets/cash-and-buy-power` `margin_status`); `/v1/asset/fund`, quote `brokers`, `/v1/quote/operatings`, `/v1/quote/broker-holding*` and DCA `/v1/dailycoins/*` → no US equivalent. AP-region accounts calling a US-only path: `/v1/us/orders/{id}` → `GET /v1/trade/order`; `/v1/us/orders/query` → `GET /v1/trade/order/today` or `/v1/trade/order/history`; `/v1/us/assets/overview` → `GET /v1/asset/account` + `GET /v1/asset/stock`; `/v1/us/assets/transaction-history` → `GET /v1/asset/cashflow`; `/v1/us/assets/exchange-rates` → `GET /v1/asset/exchange_rates`; `/v1/us/assets/cash-and-buy-power` → `GET /v1/asset/account`; `/v1/us/assets/available-holding` → `GET /v1/asset/stock` (`available_quantity`); US fundamentals → the AP fundamentals endpoints: `/v1/us/stock-info/company-overview` → `GET /v1/quote/comp-overview`, `/v1/us/stock-info/valuation-overview` → `GET /v1/quote/valuation`, `/v1/us/stock-info/finn-overview` and `/v1/us/quote/financials/statements` → `GET /v1/quote/financial-reports`, `/v1/us/stock-info/fin-keyfactor` → `GET /v1/quote/financials/earnings-snapshot`, `/v1/us/stock-info/fin-consensus` → `GET /v1/quote/financial-consensus-detail`, `/v1/us/stock-info/etf-dividend-info` and `/v1/us/stock-info/company-dividends` → `GET /v1/quote/dividends`; other US paths (realized P&L `/v1/us/assets/pl/realized`, crypto overview, ETF files) → no AP equivalent. The struct fields are unchanged
+- The `required` argument of `http.Client.CheckRegion` / `CheckRegionCtx` (and `RegionRestrictedError.Required` when building the hint) is compared case-insensitively (`strings.EqualFold`), so `"us"` and `"US"` behave the same; anything other than US means AP
+
+### Fixed
+
+- `USTransaction.CreateAt` / `DoneAt` docs state that a missing time is the zero `time.Time`, which `encoding/json` marshals as `"0001-01-01T00:00:00Z"`; check `IsZero()`
+- **Region guards work for OAuth sessions** — they previously treated every OAuth session as AP, so US OAuth users got `*http.RegionRestrictedError` from every US-only method (`USAssetOverview`, `USOrderDetail`, the US asset APIs, `FundamentalContext` US methods, ...) and were never stopped by AP-only guards. The region is now read from the OAuth access token; if the token cannot be obtained, that error is returned
+- **`USAssetOverview.CryptoList` keeps the holding quantity and prices** — `USCryptoEntry` only kept five of the fields `GET /v1/us/assets/overview` returns for a crypto holding, so it had no `Quantity`; it now mirrors `USStockEntry` (`Quantity`, `Market`, `Name`, `LastDone`, `MarketPrice`, `PrevClose`, `TodayPL`, `PositionSide`, ...). `Symbol` is the bare pair code (e.g. `BTCUSD`); the user-facing symbol is `Symbol + "." + Market` (e.g. `BTCUSD.BKKT`)
+- **`QuoteContext.OptionChainInfoByDate` calls `POST /v1/quote/options/strikes`** (ports longbridge/openapi#612) — the `GET /v1/gemini/option/option_chain_list` endpoint it used since v0.28 was renamed on the gateway and returned `404000 api not found` in every region, so the method failed on every call. The same fields are now sent as a JSON body; the signature and `OptionChainContract` are unchanged
+
+## [v0.29.2] - 2026-10-16
+
+### Added
+
+- **Attached-order depth levels** (ports longbridge/openapi#607, documented in longbridge/developers#1189) — `SubmitAttachedParams` and `ReplaceAttachedParams` gain `ProfitTakerDepthLevel` / `StopLossDepthLevel` (`int32`, `0` is not sent): the bid/ask depth level used for the take-profit / stop-loss limit order's submitted price, valid when `ActivateOrderType` is `LIT`. `AttachedOrderDetail` gains `LimitDepthLevel` (`0` when not set; a numeric string is accepted, and `null` or a non-numeric value reads as `0`), returned on the `AttachedOrders` of `TodayOrders` / `HistoryOrders` / `OrderDetail`
+
+## [v0.29.1] - 2026-10-14
+
+### Added
+
+- **Quote transport** (ports longbridge/openapi#604) — new `quote.Transport` (`quote.TransportWebSocket`, default / `quote.TransportHTTP`), set with `quote.WithTransport(...)`, `config.Config.QuoteTransport` or env `LONGBRIDGE_QUOTE_TRANSPORT=ws|http`. With `TransportHTTP` the 20 `QuoteContext` pull methods backed by the 19 WebSocket commands that have a REST equivalent (`StaticInfo`, `Quote`, `OptionQuote`, `WarrantQuote`, `Depth`, `Brokers`, `Participants`, `Trades`, `Intraday`, `Candlesticks`, `HistoryCandlesticksByOffset` / `ByDate`, `OptionChainExpiryDateList`, `WarrantIssuers`, `WarrantList`, `TradingSession`, `TradingDays`, `CapitalFlow`, `CapitalDistribution`, `CalcIndex`) are sent as `POST /quote/*` instead of over the quote WebSocket; the request is the same protobuf message encoded as proto-JSON and the response is decoded back into the same message, so method signatures and return types are unchanged
+  - The WebSocket is dialed lazily with `TransportHTTP` — only when `Subscribe` / `Unsubscribe` (after a subscription), `Profile()` or an API without a REST equivalent is first used (push callbacks registered with `On*` are queued and attached then; `Subscriptions` returns an empty result while not connected; after `Close` nothing re-dials and such calls return `quote.ErrClosed`) — so a context that only pulls data never opens a WebSocket connection. `Profile()` may therefore dial on first use and returns `nil` if that fails. With the default `TransportWebSocket` the connection is established in `New` exactly as before
+  - **US overnight alignment:** REST always returns US overnight data while the WebSocket only does with `WithEnableOvernight(true)`. On the HTTP path (and only there) the SDK clears `OverNightQuote`, drops overnight `Intraday` lines for US equities and, for `CandlestickTradeSessionAll` history queries, drops overnight bars and tops up count/range-capped windows with `POST /quote/history-candlesticks` offset queries (≤1000 bars per request, ≤8 extra requests; a failure in a top-up request fails the call)
+  - **Known differences:** HTTP errors are `*http.ApiError` rather than protocol errors; the REST gateway currently reports business errors (e.g. `301600`, `301607`) as `500`; HTTP calls use `HTTPTimeout` (default 15s) rather than the WebSocket request timeout; a candlestick top-up turns one history call into up to 9 HTTP requests, which may reach REST rate limits (`429`) sooner; during the US overnight session (20:00–04:00 New York) the REST gateway has already rolled over to the next trading day, so `Intraday` for a US equity can be empty over HTTP (its lines are all overnight and dropped) and REST snapshot APIs (`Quote`, `Depth`, `CalcIndex`, `CapitalFlow`, …) may reflect overnight trading that the WebSocket (without overnight enabled) does not report; `Trades` may include overnight ticks during and shortly after the overnight session. The HTTP path has no client-side rate limiting. The lazy dial holds the connection lock for the whole dial (up to dial + OTP + auth timeouts) and is not bounded by the caller's `ctx`
+  - `quote.New` now returns an error instead of panicking when no HTTP client is configured
+  - `quote.New` with options does not inherit the HTTP client's region: set `quote.WithQuoteURL(...)` for non-global environments, or use `quote.NewFromCfg`
+- **`OrderDelayedNotReported` order status** (ports longbridge/openapi#595) — new `trade.OrderStatus` constant for the wire value `"DelayedNotReported"`: monitoring, the state a time-condition order sits in before it is reported to the exchange. `OrderStatus` is a plain string, so this status was already passed through as-is; the constant lets callers compare against it instead of a string literal
+- **Time-condition orders** (ports longbridge/openapi#595, documented in longbridge/developers#1289) — `SubmitOrder`, `SubmitMultiLegOrder` and `ReplaceOrder` gain a `DelayedUntil int64` field (unix timestamp seconds; `0` / unset sends nothing). On submit it holds the order in `OrderDelayedNotReported` status and sends it automatically at that time (later than now, at most 90 days ahead; multi-leg orders support only `LO` / `MO`). On replace, `0` keeps the current time condition, the new `ClearDelayedUntil` constant (`1`) clears it, and any other value sets a new time. `Order` and `OrderDetail` gain `DelayedUntil string` carrying the time back from `TodayOrders` / `HistoryOrders` / `OrderDetail` (`"0"`, or empty if the server omits the field, when the order is not a time-condition order); a JSON number in this new field is accepted too, so a server-side type change cannot fail the whole response
+
+### Changed
+
+- `config.Config.EnableOvernight` now also reads `LONGBRIDGE_ENABLE_OVERNIGHT` (as the README always documented), taking precedence over `LONGPORT_ENABLE_OVERNIGHT`. Users who set `LONGBRIDGE_ENABLE_OVERNIGHT=true` will start receiving US overnight data after upgrading
+- `http.Client.Call` with a `*json.RawMessage` response now returns an empty message instead of `EOF` when a JSON response has no `data` field (non-JSON responses are still errors)
+- `QuoteContext.Close` is idempotent; calling it twice used to panic
+
+### Fixed
+
+- `QuoteContext.Subscribe` now returns the error of the underlying subscribe request; it was dropped and `nil` was always returned
+- A WebSocket that fails authentication while dialing is closed instead of leaked
+- The quote WebSocket is closed when the initial quote-profile query fails in `quote.New`, instead of being leaked
+
+## [v0.29.0] - 2026-09-30
+
+### Breaking changes
+
+- **`trade.FundPosition`** — the fund identifier field is renamed from `Symbol` (which carried the ISIN) to `CounterID`, matching the Rust core and the fund channel. It now holds the full fund `counter_id` (e.g. `UT/FD/HK0000384492`); the ISIN is the last `/`-separated segment. The wire type reads the new `counter_id` key and still accepts the legacy `symbol` key during the transition
+
+### Added
+
+- **Fund (mutual fund)** — new `fund.FundContext` for the fund channel (ports longbridge/openapi), mirroring the Rust core field-for-field across 28 methods:
+  - Catalog / market data: `HotFunds` (`GET /v1/fund/hot-funds`), `Funds` (`POST /v1/fund/funds`), `Filters` (`GET /v1/fund/filters`), `Detail` (`GET /v1/fund/funds/detail`), `Analysis` / `AnalysisDetail` / `Trend` / `PerformanceComparison` (`.../analysis`, `.../analysis/detail`, `.../trend`, `.../performance/comparison`), `AnnualReturns` / `QuarterlyReturns` (`.../returns/annual`, `.../returns/quarterly`), `Performance` (`.../performance`), `Nav` / `NavHistory` / `NavRange` (`.../nav`, `.../nav-history`, `.../nav-range`), `Holdings` (`.../holdings`) and `StockHoldings` (`.../stock-holdings`, reverse lookup)
+  - User positions: `Positions` (`GET /v1/asset/funds`), `Position` (`.../detail`), `PositionPerformance` / `PositionProfits` / `PositionNav` / `PositionDividends` (`.../performance`, `/profits`, `/nav-history`, `/dividends`)
+  - Orders & trading: `Orders` (`GET /v1/fund/orders`), `Order` (`GET /v1/fund/orders/{id}`), `Transactions` (`GET /v1/fund/transactions`), `ValidateOrder` (`POST /v1/fund/orders/validate`), `SubmitOrder` (`POST /v1/fund/orders`) and `CancelOrder` (`POST /v1/fund/orders/{id}/cancel`)
+  - The fund channel is the deliberate **exception** to the release-wide symbol migration: funds are identified by `counter_id` (e.g. `UT/FD/HK0000384492`), which cannot be converted to a user symbol. Because it contains `/` it cannot sit in the URL path, so single-fund endpoints take it as a `counter_id` query parameter (fixed sub-paths like `/v1/fund/funds/detail`) rather than a path segment; the order request filter carries repeated `counter_id` query params. Three batch-backed endpoints — `Performance`, `Nav` and `PositionPerformance` — instead send the identifier as a one-element JSON array in a `counter_ids` query parameter, matching their backend contract
+  - Numeric `int64` fields use the string-tolerant `jsontypes.Int64` type (the backend may send them as a JSON number or a quoted string; empty / `null` become `0`); unix-second timestamps are `int64`; nested response objects the backend may return as `null` (`FundDetail.AssetAllocation`, `FundTrend.ContrastPerformances`, `FundPositionDetail.DetailValues`, `FundOrderDetail.Order`) are modeled as pointers so those responses deserialize instead of erroring on `null`; server-defined "any" structures (fund filters, analysis ability/cost blocks, trend / comparison performance series) are preserved as `json.RawMessage`
+
+## [v0.28.0] - 2026-09-28
+
+### Breaking changes
+
+- **Removed `GridContext.SubmitStrategyQuestionnaire`** (`POST /v1/record/questionnaire`) and its `jsontypes.SubmitStrategyQuestionnaire` request type (ports longbridge/openapi). The strategy risk-disclosure questionnaire endpoint has been retired and is no longer submitted through the SDK. All other grid APIs are unchanged
+- **Removed all symbol↔counter_id conversions from the SDK** (ports longbridge/openapi PR #562). Every endpoint now sends and receives the user-facing symbol (e.g. `AAPL.US`, `HSI.HK`) directly:
+  - Request query/body parameters `counter_id` / `counter_ids` / `underlying_counter_id` were renamed to `symbol` / `symbols` and carry the user symbol as-is — no more conversion to the internal `ST/US/AAPL` / `IX/HK/HSI` / `ETF/SH/513050` / `VA/BKKT/BTCUSD` forms. Affects `fundamental` (all endpoints incl. the US series and `comparison_symbols` on `ValuationComparison`), `market`, `quote` (`ShortPositions`, `ShortTrades`, `OptionVolume*`, `USCryptoOverview`), `trade` (`USQueryOrders` body `symbols`), `portfolio` (`ProfitAnalysisDetail`, `ProfitAnalysisFlows`), `dca` (`List`, `Create`, `Stats`, `CheckSupport`, `CalcDate`), `sharelist` (`AddSecurities`, `RemoveSecurities`, `SortSecurities`) and `alert`
+  - Response fields previously read from `counter_id` and converted are now read from the server's `symbol` field directly (`ExecutiveGroup`, `ShareholderStock`, `FundHolder`, `OperatingFinancial`, `IndustryRankItem`, `IndustryPeerNode`, asset-allocation items, DCA plans/records, sharelist members, alert groups, US orders/assets — `USStockEntry` reads `full_symbol`, US crypto entries read `symbol`)
+  - `DELETE` endpoints no longer send a JSON body: `alert.Delete` sends `ids` and `sharelist.RemoveSecurities` sends `symbols` as query-string parameters; `sharelist.Delete` sends no body at all
+  - **Removed** the public `counter` package, the internal converter (embedded US-ETF/IX/WT directories) and `quote.QuoteContext.SymbolToCounterIds` / `ResolveCounterIds` (`POST /v1/quote/symbol-to-counter-ids` is no longer called)
+- `fundamental.Ratings` (`GET /v1/quote/ratings`) is temporarily disabled — the endpoint is not yet open; the method is commented out pending release
+- `market.TopMoversResponse.NextParams` is now a plain pagination-cursor `string` instead of `json.RawMessage`; an empty string means there are no more pages
+- Portfolio flows `ExecutedTimestamp` is normalized to a string (server may send int or string; `null` becomes an empty string)
+- **`CalendarContext.FinanceCalendar` gains pagination controls** (ports longbridge/openapi #597) — three new optional trailing parameters `count *int32` (max events per page), `offset *int32` (events to skip), and `next *CalendarPageDirection` (a new `Later` / `Earlier` enum). Previously the method issued a single request with no page-size control, so the server's default page cap (historically ~10 events) made even a one-day query look truncated at 10 results. The response's `NextDate` cursor is unchanged; to retrieve a full window, request a larger `count`, or re-call with the returned `NextDate` as `start` until it comes back empty. Pass `nil` for the new arguments to use the server defaults
+- **`QuoteContext.OptionChainInfoByDate` moves off the quote socket onto the HTTP endpoint `GET /v1/gemini/option/option_chain_list`** (ports longbridge/openapi PR #588) and its return type changes shape. The paired `StrikePriceInfo` (`Price` + `CallSymbol` + `PutSymbol` + `Standard`) is **removed** in favour of a flat, one-entry-per-contract `OptionChainContract` (`Symbol`, `ExpiryDate`, `StrikePrice`, `Direction`, `OptionType`, `StandardAttr`, `DaysToExpiry`). Calls and puts are no longer paired by strike, so a strike listed on one side only now yields a single entry; filter on `Direction` where you used to read the two symbol fields. The signature gains an `expiryDate time.Time` (now required, was `*time.Time`) and a `standardOnly bool` that filters out legacy corporate-action contracts server-side (omitted from the query when false). Two new enums come with it: `OptionExpiryCycleType` (`Unknown` / `Monthly` / `Weekly` / `Quarterly` — the server's empty `option_type` means a standard monthly option) and `OptionStandardAttr` (`Unknown` / `Normal` / `Old`), plus `OptionDirection` (`Unknown` / `Put` / `Call`). `QuoteContext.OptionChainExpiryDateList` is unchanged
+
+### Added
+
+- **Grid trading** — new `grid.GridContext` for grid-order management: `Submit` / `Replace` / `Cancel` / `Suspend` / `Restart` grid orders, `List` (paged) and `ListByIds`, `Detail` and `TriggerHistory`, `SubmitStrategyQuestionnaire` (strategy risk-disclosure), and `SymbolInfo` (returns `GridSymbolInfo`: name, last price, lot sizes, price-step rules, channel/authorization) — the security info needed to build a grid order
+- **Multi-leg option orders** (ports longbridge/openapi #575, #589, #590) — new `TradeContext.SubmitMultiLeg` (`POST /v1/trade/order/multileg`) submits a multi-leg option combination order (vertical spreads, straddles, strangles, collars, calendar spreads, etc.) whose legs are placed together as a single strategy order. Takes `Side`, `OrderType`, `SubmittedQuantity`, `Strategy` (`MultiLegStrategy`), a list of `SubmitMultiLegOrderLeg` (`Symbol` + `RatioQuantity`), and optional `SubmittedPrice` / `Remark` / `ClientRequestId`; returns the order ID like `SubmitOrder`. `Order`, `OrderDetail`, and the `PushOrderChanged` order-changed push gain an optional `MultiLeg *MultiLegInfo` field — present only for multi-leg orders — carrying `Strategy`, `StrategyName`, `MultilegId`, `Code`, and the combination `Legs` (each with `Symbol`, `Side`, `Position`, `RatioQuantity`, `StrikePrice`, `ExpireDate`, `ContractDirection`). New enums `MultiLegStrategy` (`CoveredCall` … `Strangle`, plus `CalendarCallSpread` / `CalendarPutSpread`), `MultiLegPosition` (`LONG` / `SHORT`), and `ContractDirection` (`C` / `P`)
+
+- **Strategy signals** — new `signal.SignalContext` (ports longbridge/openapi #577, #578) for strategy signals and the catalyst facts behind them:
+  - `Signals` (`GET /v1/signals`) queries signals with symbol / strategy / catalyst / time-range filters and paging (`SignalsOptions`), returning `SignalsResponse` (`Signals` + `Total`)
+  - `Signal` (`GET /v1/signals/{signal_id}`) returns one signal including the full strategy analysis in `Signal.JsonData`
+  - `SecurityFacts` (`GET /v1/facts/security_facts`) lists a security's fact (catalyst) events — the anomaly detections, factor readings, data sources and natural-language summaries a strategy reacts to
+  - New types `Signal`, `SecurityFact`, `FactFactor`, `AnomalyDetection`, `FactDataSource`, `FactNlInfo` (with `SummaryTags()` / `InvestAnalTags()` / `EliExplainTags()` helpers for the `{tag, value}` entries the API carries as JSON inside a string), and the `Outlook`, `SignalStatus`, `FactType`, `FactDirection` enums
+- **`Execution` gains a `Side` field** (ports longbridge/openapi) — the buy/sell direction (`OrderSide`) of the fill, now populated on the `TodayExecutions`, `HistoryExecutions`, and `AllExecutions` responses
+
+### Changed
+
+- **`AlertItem.ValueMap` is now a typed `AlertValueMap`** (ports longbridge/openapi) instead of raw JSON (`json.RawMessage`). Exactly one field is populated depending on the alert condition: `Price *decimal.Decimal` (absolute-price threshold) for price alerts, `Chg *float64` (percentage-change threshold) for percentage alerts
+- **`MarketContext.RankCategories` now returns a typed response** (ports longbridge/openapi) instead of raw JSON. `RankCategoriesResponse.Categories` is a list of `RankCategory` (`Key` / `Name` / `SubCategories`), each `RankSubCategory` carrying `Key` / `Name` / `Market`. The `ib_` prefix is stripped from every `Key` so it can be passed straight to `RankList`
+- **`CorpActionLive.Status` is now a plain `string`** (ports longbridge/openapi) instead of `json.RawMessage`. The server may send it as either an integer or a string; it is now normalized to a string (e.g. `"2"`)
+- **`IndustryPeersResponse.Top` is now optional** (`*IndustryPeersTop`, ports longbridge/openapi) — the server may return `null` when there is no data; previously this caused a deserialization error
+- **`WarrantStatus` gains a `WarrantStatusUnknown` (0) variant** (ports longbridge/openapi) for the placeholder rows the server returns with `status: 0` and an empty `WarrantInfo.ExpiryDate`
+- Refreshed the option Greek field docs on `SecurityCalcIndex` (`Delta` / `Gamma` / `Theta` / `Vega` / `Rho`) to match the Calc Index interface documentation (ports longbridge/openapi #586). Notably `Theta` is documented as a per-day value — the server already divides the raw annualized value by 365. Doc comments only
+- **`TradeContext.HistoryExecutions` now pages through all results** (ports longbridge/openapi #591). The endpoint caps each response at 1000 records; the method walks the `page` query parameter (1-based) until `has_more` is false, deduping by `trade_id` and stopping early if a page adds nothing new (guarding against the gateway ignoring `page`), bounded to 1000 pages. Previously it issued a single request and silently returned only the first page
+
+## [v0.27.0] - 2026-08-14
+
+### Added
+
+- **AI Agent:** new `agent` package (`AgentContext`) for the AI Agent conversation API:
+  - `Workspaces` (`GET /v1/ai/workspaces`) and `Agents` (`GET /v1/ai/workspaces/{id}/agents`)
+  - `PublicAgents` (`GET /v1/ai/agents`) — lists all publicly available Agents on the platform (the Explore catalog); unlike `Agents` it is not scoped to a Workspace and returns every published, publicly-shared Agent. Takes the same optional `page` / `limit` / `name` parameters and returns the same `AgentsResponse`
+  - `Conversation` / `Continue` — blocking `POST .../conversations` and `.../continue` (dedicated 120s request timeout; the plain `Workspaces` / `Agents` GETs use 15s)
+  - `ConversationStream` / `ContinueStream` — SSE variants returning a `*ConversationStream` iterator (`Next` / `Event` / `Err` / `Close`), unbounded except for `ctx` cancellation. Events are modeled as an interface with 7 concrete types (`ChatStartedEvent`, `WorkflowStartedEvent`, `MessageEvent`, `PingEvent`, `ChatFinishedEvent`, `WorkflowFinishedEvent`, `ChatTitleUpdatedEvent`) plus an `OtherEvent` fallback for forward compatibility
+  - `Conversation` / `ConversationStream` take a `parentMessageID` to attach a follow-up after a specific earlier message — only valid together with a non-empty `chatUID`
+  - `ConversationResponse.FurtherQuestions` — the "you might also ask" follow-up suggestions carried in the `workflow_finished` outputs
+  - `Reference` captures the full source payload the server sends — `OriginalIndex`, `RefType` (wire `type`), `ID`, and the nested `Content` (`json.RawMessage`); previously `Title` / `URL` came back empty and `source` / `description` / `published_at` / … were lost entirely
+  - `ChatStartedEvent` carries `ChatID`, `Error`, and `ErrorMessage`
+  - `Interrupt.Interactions` — a slice of `HumanInteraction` (`ToolCallID`, `InterruptID`, `InteractionType`, `ToolName`, `Questions`, and the raw `ToolArgs`) — and `QuestionOption.Label`; a `null` `questions` / `interactions` list from the server is tolerated (decodes to an empty slice)
+  - `message_id` fields accept either a JSON string or a raw number, matching the other SDKs' defensive deserialization
+- **http:** new `CallSSE` (streaming call, returns the raw response body instead of buffering it) and `WithRequestTimeout` request option, added to support the streaming AI Agent calls
+- **Attached order (take-profit / stop-loss) support** for `SubmitOrder` and `ReplaceOrder`:
+  - New types: `AttachedOrderType` (`AttachedOrderTypeProfitTaker` / `AttachedOrderTypeStopLoss` / `AttachedOrderTypeBracket`), `AttachedOrderDetail`, `SubmitAttachedParams`, `ReplaceAttachedParams`
+  - `SubmitOrder` / `ReplaceOrder`: new `AttachedParams` field
+  - `Order` / `OrderDetail`: new `AttachedOrders []AttachedOrderDetail` field
+  - New `TradeContext.OrderDetailAttached(orderId)` and `TradeContext.CancelOrderAttached(orderId)` methods — query/cancel an attached sub-order by its own order ID
+  - `GetTodayOrders`: new `OrderId` and `IsAttached` fields — when combined, treats `OrderId` as an attached sub-order ID and returns that sub-order as an `Order` entry (not the parent order)
+
+### Breaking changes
+
+- `OrderDetail.ChargeDetail` is now `*OrderChargeDetail` (previously non-pointer). Attached orders return `nil` for this field; callers must handle the absent case.
+
+## [v0.26.0] - 2026-07-20
+
+### Added
+
+- **US market APIs** — 14 new interfaces for US-region accounts (requires `us_` token):
+  - Fundamental: `CompanyOverview`, `ValuationOverview`, `FinancialOverview`, `FinancialStatement`, `KeyFinancialMetrics`, `AnalystConsensus`, `ETFDividendInfo`, `CompanyDividends`, `ETFFiles`
+  - Quote: `CryptoOverview` (BTCUSD.BKKT etc.)
+  - Trade: `USAssetOverview`, `USRealizedPL`, `QueryUSOrders`, `USOrderDetail`
+- **DC-region routing** — `x-dc-region` header derived from token prefix (`us_` → US, others → AP); `NewHTTPFromCfg` for HTTP-only trade context without WebSocket
+- **`AllExecutions`** — `GET /v3/trade/execution/all` queries today and historical executions in one call with pagination
+- **`OutsideRTH.OptionPreMarket`** — new enum variant for overnight option orders
+
+### Changed
+
+- `OrderTag` enum values updated to match current API definitions; unused variants removed
+- `QuoteContext.RealtimeQuote` skips nil cache entries instead of panicking
+
+### Fixed
+
+- `QuoteContext.RealtimeQuote`: nil pointer dereference when cache entry is empty (#104)
+
+## [v0.25.2] - 2026-06-26
+
+### Added
+
+- `market.TradeStatus` models `/v1/quote/market-status` trade status codes,
+  including display names, labels, normalization helpers, and status code `2001`.
+
+### Changed
+
+- `market.MarketTimeItem.TradeStatus` and `DelayTradeStatus` now use
+  `market.TradeStatus` instead of raw `int32` values.
+
+### Fixed
+
+- `AlertContext.List`: `AlertSymbolGroup.Symbol` was always empty because the JSON tag was `"symbol"` but the API returns `"counter_id"` (e.g. `ST/HK/700`). Fixed by changing the tag to `json:"counter_id"` and converting via `counter.IDToSymbol()` so callers receive the standard symbol format (e.g. `700.HK`).
+- `FundamentalContext.Macroeconomic`: `Info.Periodicity` and `Info.Importance` were always zero/empty. Fixed by adding `frequence` and `importance` fields to the v2 wire type `V2MacroeconomicDetail`.
+
+## [v0.25.1] - 2026-06-13
+
+### Added
+
+- **All languages:** `macroeconomic_indicators` gains `keyword` parameter for fuzzy name filtering
+- **All languages:** `macroeconomic` switches to `GET /v2/quote/macrodata/{id}`, defaults to `sort=desc`
+
+### Changed
+
+- `MacroeconomicIndicator.name` / `.describe`: `MultiLanguageText` → `string`
+- `Macroeconomic.unit` / `.unit_prefix`: `MultiLanguageText` → `string`
+
+## [v0.25.0] - 2026-06-10
+
+### Added
+
+- New public `counter` package for symbol ↔ `counter_id` conversion, backed by
+  an embedded ETF (7250) / index (648) / warrant (17693) directory:
+  - `SymbolToCounterID` / `IndexSymbolToCounterID` / `CounterIDToSymbol`
+  - `IsETF` reports whether a symbol resolves to an ETF
+  - `LookupCounterID` resolves locally only (embedded directory + on-disk cache + leading-dot index notation)
+  - `CacheCounterIDs` persists remotely resolved entries to `$LONGBRIDGE_CACHE_DIR/counter-ids.csv` (default `~/.longbridge/cache/counter-ids.csv`)
+- `QuoteContext.SymbolToCounterIds` — batch convert symbols to counter IDs via `POST /v1/quote/symbol-to-counter-ids`
+- `QuoteContext.ResolveCounterIds` — local-first counter ID resolution with batched remote fallback and automatic caching
+- `FundamentalContext.EtfAssetAllocation` — ETF asset allocation (holdings / regional / asset class / industry) via `GET /v1/quote/etf-asset-allocation`
+- `FundamentalContext.MacroeconomicIndicators(country, offset, limit)` — list macroeconomic indicators via `GET /v1/quote/macrodata`; filter by `MacroeconomicCountry` (HK/CN/US/EU/JP/SG); response includes `Count`
+- `FundamentalContext.Macroeconomic(indicatorCode, startDate, endDate, offset, limit)` — historical data for a specific indicator via `GET /v1/quote/macrodata/{indicator_code}`; `startDate` / `endDate` accept `"YYYY-MM-DD"` strings; response includes `Count`
+- New types: `MultiLanguageText`, `MacroeconomicCountry`, `MacroeconomicImportance`, `MacroeconomicIndicator`, `MacroeconomicIndicatorListResponse`, `Macroeconomic`, `MacroeconomicResponse`
+
+## [v0.24.2] - 2026-06-02
+
+### Fixed
+
+- `calendar.CalendarEventsResponse`: expose `NextDate` cursor so callers can follow pagination (`/v1/quote/finance_calendar` returns results across multiple pages via `next_date`)
+- `calendar.CalendarEventInfo.Symbol`: convert raw `counter_id` (e.g. `ST/US/CRM`) to standard symbol format (`CRM.US`)
+- `quote.DailyOptionVolume.Symbol`: convert `underlying_counter_id` to symbol format
+
+### Changed
+
+- Add `internal/counter.IDToSymbol` as shared `counter_id` → symbol conversion helper; `sharelist` migrated to use it
+
+## [v4.2.1] - 2026-05-23
+
+### Changed
+
+- `screener` package: endpoints migrated to `/v1/quote/ai/screener/*`; `ScreenerRecommendStrategies` / `ScreenerUserStrategies` now accept a `market` parameter; `ScreenerSearch` accepts typed `ScreenerCondition` objects (Mode B)
+
+### Fixed
+
+- `OperatingFinancial`: renamed `CounterID` → `Symbol` (converts `ST/US/AAPL` → `AAPL.US`)
+- `oauth`: fix panic (`sync: unlock of unlocked mutex`) when authorization flow fails
+
+## [v4.2.0] - 2026-05-22
+
+### Added
+
+- 19 new APIs (same as openapi v4.2.0): `FundamentalContext` +9, `QuoteContext` +1, `MarketContext` +3, new `screener` package +5 — see PR [#91](https://github.com/longbridge/openapi-go/pull/91), [#92](https://github.com/longbridge/openapi-go/pull/92)
+
+### Changed
+
+- `ShortPositions`/`ShortTrades`: typed structs, unified US+HK, RFC 3339 timestamps
+- `TopMovers`, `RankList`, `ValuationComparison`: typed structs, `counter_id` → symbol, RFC 3339 timestamps
+
+### Breaking changes
+
+- `StockEvents` → `TopMovers`; `StockEventsResponse` → `TopMoversResponse`
+- `HkShortPositions` removed; use `ShortPositions(ctx, symbol, count)`
+- Response types for `ShortPositions`, `ShortTrades`, `TopMovers`, `RankList`, `ValuationComparison` changed from raw JSON to typed structs
+
+## [v4.1.0] - 2026-05-14
+
+### Added
+
+- New `alert` package with `AlertContext` for price alert management: `List`, `Add`, `Update`, `Delete`.
+- New `calendar` package with `CalendarContext` for the finance calendar: `FinanceCalendar` (earnings, dividends, IPOs, macro data, market closures).
+- New `dca` package with `DCAContext` for dollar-cost-averaging plan management: `List`, `Create`, `Update`, `Pause`, `Resume`, `Stop`, `History`, `Stats`, `CheckSupport`, `CalcDate`, `SetReminder`.
+- New `fundamental` package with `FundamentalContext` covering financial reports, analyst ratings, dividends, EPS forecasts, consensus estimates, valuation (PE/PB/PS), industry valuation, company overview, executives, shareholders, fund holders, corporate actions, investor relations, operating reports, buyback data, and stock ratings (20 methods).
+- New `market` package with `MarketContext` for market-level data: `MarketStatus`, `BrokerHolding`, `BrokerHoldingDetail`, `BrokerHoldingDaily`, `AhPremium`, `AhPremiumIntraday`, `TradeStats`, `Anomaly`, `Constituent`.
+- New `portfolio` package with `PortfolioContext` for portfolio analysis: `ExchangeRate`, `ProfitAnalysis`, `ProfitAnalysisByMarket`, `ProfitAnalysisDetail`, `ProfitAnalysisFlows`.
+- New `sharelist` package with `SharelistContext` for community sharelist management: `List`, `Detail`, `Popular`, `Create`, `Delete`, `AddSecurities`, `RemoveSecurities`, `SortSecurities`.
+- `QuoteContext` gains four new methods: `ShortPositions`, `OptionVolume`, `OptionVolumeDaily`, `UpdatePinned`.
+- `WatchedSecurity` gains a new `IsPinned bool` field.
+- `Config` gains `ExtraHeaders map[string]string` and `WithHeader(key, value string) *Config` for injecting custom HTTP headers into every request.
+
+### Fixed
+
+- `AlertContext.enable` and `AlertContext.disable` (from prior drafts) replaced by a single `AlertContext.Update(item)` method, matching the v4.1.0 breaking change in the Rust SDK.
+
+## [0.23.0] - 2026-03-30
+
+### Added
+
+- New `asset` package with `StatementContext` for accessing statement APIs:
+  - `StatementList` – list account statements with date range and pagination.
+  - `StatementDownloadURL` – get the download URL for a specific statement file.
+- Staging environment support: set `LONGBRIDGE_ENV=staging` to point to `longbridge.xyz` endpoints (HTTP, quote WebSocket, trade WebSocket, OAuth).
+- `ContentContext` adds two new methods:
+  - `MyTopics(opts *MyTopicsOptions)` — get topics created by the current authenticated user, with optional page/size/topic_type filtering.
+  - `CreateTopic(opts *CreateTopicOptions)` — create a new topic; returns the topic ID (`string`) on success.
+- New types: `OwnedTopic`, `MyTopicsOptions`, `CreateTopicOptions`, `TopicReply`, `TopicAuthor`, `TopicImage`.
+
+## [0.22.0] - 2026-03-20
+
+### Breaking changes
+
+- **CN endpoint URLs**: Migrated from `longportapp.cn` to `longbridge.cn` (HTTP, quote WebSocket, trade WebSocket).
+- **OAuth token storage path**: Changed from `~/.longbridge-openapi/tokens/` to `~/.longbridge/openapi/tokens/`. Existing tokens under the old path will not be read automatically; move them manually or re-authorize.
+
+## [0.21.0] - 2026-03-19
+
+### Added
+
+- New `content` package with `ContentContext` for accessing content APIs:
+  - `Topics` – list discussion topics for a symbol.
+  - `News` – list news articles for a symbol.
+- `QuoteContext.Filings` – list filing documents for a symbol.
+
+## [0.20.0] - 2025-03-10
+
+### Breaking changes
+
+- **Import path**: Update imports from `github.com/longportapp/openapi-go` to `github.com/longbridge/openapi-go`.
+- **Config files**: In TOML/YAML, rename the config section from `[longport]` / `longport:` to `[longbridge]` / `longbridge:`.
+- **Environment variables**: The recommended prefix is now `LONGBRIDGE_` (e.g. `LONGBRIDGE_APP_KEY`, `LONGBRIDGE_APP_SECRET`, `LONGBRIDGE_ACCESS_TOKEN`). The old `LONGPORT_` prefix is still supported for backward compatibility.
+- **Config API**: `WithOAuth` and `FromOAuth` are removed. Use three keys (app key, secret, access token) or `WithOAuthClient` only.
+- **Dependencies**: If you depend on them directly, switch from `github.com/longportapp/openapi-protobufs/gen/go` and `github.com/longportapp/openapi-protocol/go` to `github.com/longbridge/openapi-protobufs/gen/go` (v0.7.0) and `github.com/longbridge/openapi-protocol/go` (v0.5.0).
+
+### Added
+
+- OAuth 2.0 authentication support (`WithOAuthClient`, auto-refresh, authorization code flow).
+
+### Changed
+
+- Module path migrated from `github.com/longportapp/openapi-go` to `github.com/longbridge/openapi-go`.
+- Dependencies migrated to Longbridge: `openapi-protobufs/gen/go` v0.7.0, `openapi-protocol/go` v0.5.0.
+- Config parsing: `longport` renamed to `longbridge` in `parseConfig` (TOML/YAML config block keys updated accordingly).
+- Environment variable prefix: recommended prefix is `LONGBRIDGE_`; `LONGPORT_` remains supported for backward compatibility.
+- OAuth flow uses `OnOpenURL` callback for opening the authorization page instead of auto-opening the browser.
+- Config validation: only three keys or OAuthClient supported.
+
+### Removed
+
+- Config options: `WithOAuth`, `FromOAuth`.

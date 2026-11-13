@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+bin/
+coverage.out
+*.test
+
+__pycache__/
+live-test-results.json
+live-test-extended.json

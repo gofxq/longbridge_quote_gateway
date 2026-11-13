@@ -1,0 +1,2287 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Longbridge Quote Gateway",
+    "version": "1.0.0",
+    "description": "Read-only single-instance gateway. Decimal values are strings. Cache TTL defaults to 60 seconds. Historical results reaching 1000 rows may be truncated. Unknown parameters and URL tokens are rejected."
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/quotes": {
+      "get": {
+        "operationId": "quotes",
+        "summary": "quotes",
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma separated symbols; limit applies before deduplication; default maximum 50."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SecurityQuote"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quotes/{symbol}": {
+      "get": {
+        "operationId": "quotes_symbol",
+        "summary": "quotes/{symbol}",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SecurityQuote"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/securities": {
+      "get": {
+        "operationId": "securities",
+        "summary": "securities",
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma separated symbols; limit applies before deduplication; default maximum 50."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/StaticInfo"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candlesticks": {
+      "get": {
+        "operationId": "candlesticks",
+        "summary": "candlesticks",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1m",
+                "5m",
+                "15m",
+                "30m",
+                "1d",
+                "1w",
+                "1mo",
+                "1y"
+              ],
+              "default": "1d"
+            }
+          },
+          {
+            "name": "adjust",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "none",
+                "forward"
+              ],
+              "default": "none"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Candlestick"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candlesticks/history": {
+      "get": {
+        "operationId": "candlesticks_history",
+        "summary": "candlesticks/history",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1m",
+                "5m",
+                "15m",
+                "30m",
+                "1d",
+                "1w",
+                "1mo",
+                "1y"
+              ],
+              "default": "1d"
+            }
+          },
+          {
+            "name": "adjust",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "none",
+                "forward"
+              ],
+              "default": "none"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Candlestick"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/intraday": {
+      "get": {
+        "operationId": "intraday",
+        "summary": "intraday",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/IntradayLine"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/depth": {
+      "get": {
+        "operationId": "depth",
+        "summary": "depth",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SecurityDepth"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trades": {
+      "get": {
+        "operationId": "trades",
+        "summary": "trades",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Trade"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calc-indexes": {
+      "get": {
+        "operationId": "calc-indexes",
+        "summary": "calc-indexes",
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma separated symbols; limit applies before deduplication; default maximum 50."
+            }
+          },
+          {
+            "name": "indexes",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma separated: last_done, change_val, change_rate, volume, turnover, turnover_rate, total_market_value, pe_ttm_ratio, pb_ratio, dividend_ratio_ttm."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SecurityCalcIndex"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trading-sessions": {
+      "get": {
+        "operationId": "trading-sessions",
+        "summary": "trading-sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/MarketTradingSession"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trading-days": {
+      "get": {
+        "operationId": "trading-days",
+        "summary": "trading-days",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "market",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "US",
+                "HK",
+                "CN"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; batch responses can have PARTIAL_SUCCESS. Inspect code and errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/TradingDays"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway error; batch all-failed uses 502 BATCH_FAILED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy"
+          },
+          "503": {
+            "description": "Not ready (readyz only)"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy"
+          },
+          "503": {
+            "description": "Not ready (readyz only)"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "PrePostQuote": {
+        "type": "object",
+        "required": [
+          "last_done",
+          "timestamp",
+          "volume",
+          "turnover",
+          "high",
+          "low",
+          "prev_close"
+        ],
+        "properties": {
+          "last_done": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turnover": {
+            "type": "string",
+            "nullable": true
+          },
+          "high": {
+            "type": "string",
+            "nullable": true
+          },
+          "low": {
+            "type": "string",
+            "nullable": true
+          },
+          "prev_close": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SecurityQuote": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "last_done",
+          "prev_close",
+          "open",
+          "high",
+          "low",
+          "timestamp",
+          "volume",
+          "turnover",
+          "trade_status",
+          "pre_market_quote",
+          "post_market_quote",
+          "overnight_quote",
+          "change",
+          "change_percent"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "last_done": {
+            "type": "string",
+            "nullable": true
+          },
+          "prev_close": {
+            "type": "string",
+            "nullable": true
+          },
+          "open": {
+            "type": "string",
+            "nullable": true
+          },
+          "high": {
+            "type": "string",
+            "nullable": true
+          },
+          "low": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turnover": {
+            "type": "string",
+            "nullable": true
+          },
+          "trade_status": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pre_market_quote": {
+            "$ref": "#/components/schemas/PrePostQuote",
+            "nullable": true
+          },
+          "post_market_quote": {
+            "$ref": "#/components/schemas/PrePostQuote",
+            "nullable": true
+          },
+          "overnight_quote": {
+            "$ref": "#/components/schemas/PrePostQuote",
+            "nullable": true
+          },
+          "change": {
+            "type": "string",
+            "nullable": true
+          },
+          "change_percent": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "StaticInfo": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "name_cn",
+          "name_en",
+          "name_hk",
+          "exchange",
+          "currency",
+          "lot_size",
+          "total_shares",
+          "circulating_shares",
+          "hk_shares",
+          "eps",
+          "eps_ttm",
+          "bps",
+          "dividend_yield",
+          "stock_derivatives"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name_cn": {
+            "type": "string"
+          },
+          "name_en": {
+            "type": "string"
+          },
+          "name_hk": {
+            "type": "string"
+          },
+          "exchange": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "lot_size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total_shares": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "circulating_shares": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hk_shares": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "eps": {
+            "type": "string",
+            "nullable": true
+          },
+          "eps_ttm": {
+            "type": "string",
+            "nullable": true
+          },
+          "bps": {
+            "type": "string",
+            "nullable": true
+          },
+          "dividend_yield": {
+            "type": "string"
+          },
+          "stock_derivatives": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Candlestick": {
+        "type": "object",
+        "required": [
+          "close",
+          "open",
+          "low",
+          "high",
+          "volume",
+          "turnover",
+          "timestamp"
+        ],
+        "properties": {
+          "close": {
+            "type": "string",
+            "nullable": true
+          },
+          "open": {
+            "type": "string",
+            "nullable": true
+          },
+          "low": {
+            "type": "string",
+            "nullable": true
+          },
+          "high": {
+            "type": "string",
+            "nullable": true
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turnover": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Depth": {
+        "type": "object",
+        "required": [
+          "position",
+          "price",
+          "volume",
+          "order_num"
+        ],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "price": {
+            "type": "string",
+            "nullable": true
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "order_num": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SecurityDepth": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "ask",
+          "bid"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "ask": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Depth"
+            }
+          },
+          "bid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Depth"
+            }
+          }
+        }
+      },
+      "Trade": {
+        "type": "object",
+        "required": [
+          "price",
+          "volume",
+          "timestamp",
+          "trade_type",
+          "direction",
+          "trade_session"
+        ],
+        "properties": {
+          "price": {
+            "type": "string"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "trade_type": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trade_session": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "IntradayLine": {
+        "type": "object",
+        "required": [
+          "price",
+          "timestamp",
+          "volume",
+          "turnover",
+          "avg_price"
+        ],
+        "properties": {
+          "price": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turnover": {
+            "type": "string",
+            "nullable": true
+          },
+          "avg_price": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TradePeriod": {
+        "type": "object",
+        "required": [
+          "beg_time",
+          "end_time",
+          "trade_session"
+        ],
+        "properties": {
+          "beg_time": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "end_time": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trade_session": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "MarketTradingSession": {
+        "type": "object",
+        "required": [
+          "market",
+          "trade_session"
+        ],
+        "properties": {
+          "market": {
+            "type": "string"
+          },
+          "trade_session": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradePeriod"
+            }
+          }
+        }
+      },
+      "SecurityCalcIndex": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "last_done",
+          "change_val",
+          "change_rate",
+          "volume",
+          "turnover",
+          "ytd_change_rate",
+          "turnover_rate",
+          "total_market_value",
+          "capital_flow",
+          "amplitude",
+          "volume_ratio",
+          "pe_ttm_ratio",
+          "pb_ratio",
+          "dividend_ratio_ttm",
+          "five_day_change_rate",
+          "ten_day_change_rate",
+          "half_year_change_rate",
+          "five_minutes_change_rate",
+          "expiry_date",
+          "strike_price",
+          "upper_strike_price",
+          "lower_strike_price",
+          "outstanding_qty",
+          "outstanding_ratio",
+          "premium",
+          "itm_otm",
+          "implied_volatility",
+          "warrant_delta",
+          "call_price",
+          "to_call_price",
+          "effective_leverage",
+          "leverage_ratio",
+          "conversion_ratio",
+          "balance_point",
+          "open_interest",
+          "delta",
+          "gamma",
+          "theta",
+          "vega",
+          "rho"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "last_done": {
+            "type": "string",
+            "nullable": true
+          },
+          "change_val": {
+            "type": "string",
+            "nullable": true
+          },
+          "change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turnover": {
+            "type": "string",
+            "nullable": true
+          },
+          "ytd_change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "turnover_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "total_market_value": {
+            "type": "string",
+            "nullable": true
+          },
+          "capital_flow": {
+            "type": "string",
+            "nullable": true
+          },
+          "amplitude": {
+            "type": "string",
+            "nullable": true
+          },
+          "volume_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "pe_ttm_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "pb_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "dividend_ratio_ttm": {
+            "type": "string",
+            "nullable": true
+          },
+          "five_day_change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "ten_day_change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "half_year_change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "five_minutes_change_rate": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiry_date": {
+            "type": "string"
+          },
+          "strike_price": {
+            "type": "string",
+            "nullable": true
+          },
+          "upper_strike_price": {
+            "type": "string",
+            "nullable": true
+          },
+          "lower_strike_price": {
+            "type": "string",
+            "nullable": true
+          },
+          "outstanding_qty": {
+            "type": "string",
+            "nullable": true
+          },
+          "outstanding_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "premium": {
+            "type": "string",
+            "nullable": true
+          },
+          "itm_otm": {
+            "type": "string",
+            "nullable": true
+          },
+          "implied_volatility": {
+            "type": "string",
+            "nullable": true
+          },
+          "warrant_delta": {
+            "type": "string",
+            "nullable": true
+          },
+          "call_price": {
+            "type": "string",
+            "nullable": true
+          },
+          "to_call_price": {
+            "type": "string",
+            "nullable": true
+          },
+          "effective_leverage": {
+            "type": "string",
+            "nullable": true
+          },
+          "leverage_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "conversion_ratio": {
+            "type": "string",
+            "nullable": true
+          },
+          "balance_point": {
+            "type": "string",
+            "nullable": true
+          },
+          "open_interest": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "delta": {
+            "type": "string",
+            "nullable": true
+          },
+          "gamma": {
+            "type": "string",
+            "nullable": true
+          },
+          "theta": {
+            "type": "string",
+            "nullable": true
+          },
+          "vega": {
+            "type": "string",
+            "nullable": true
+          },
+          "rho": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "CacheMeta": {
+        "type": "object",
+        "required": [
+          "cache_hit",
+          "stored",
+          "cached_at",
+          "expires_at",
+          "ttl_seconds"
+        ],
+        "properties": {
+          "cache_hit": {
+            "type": "boolean"
+          },
+          "stored": {
+            "type": "boolean"
+          },
+          "cached_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ttl_seconds": {
+            "type": "number"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "code",
+          "message",
+          "http_status"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "http_status": {
+            "type": "integer"
+          }
+        }
+      },
+      "TradingDays": {
+        "type": "object",
+        "properties": {
+          "trade_day": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "half_trade_day": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        }
+      },
+      "Meta": {
+        "type": "object",
+        "required": [
+          "cache_hit"
+        ],
+        "properties": {
+          "cache_hit": {
+            "type": "boolean"
+          },
+          "symbols": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CacheMeta"
+            }
+          },
+          "cache": {
+            "$ref": "#/components/schemas/CacheMeta"
+          },
+          "requested_start": {
+            "type": "string",
+            "format": "date"
+          },
+          "requested_end": {
+            "type": "string",
+            "format": "date"
+          },
+          "returned_start": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "returned_end": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "returned_count": {
+            "type": "integer"
+          },
+          "possibly_truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data",
+          "errors",
+          "request_id",
+          "meta"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "nullable": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Error"
+            }
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      }
+    }
+  }
+}

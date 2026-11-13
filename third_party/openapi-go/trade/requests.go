@@ -1,0 +1,198 @@
+package trade
+
+import (
+	"time"
+
+	"github.com/longbridge/openapi-go"
+	"github.com/shopspring/decimal"
+)
+
+type GetHistoryExecutions struct {
+	Symbol  string    // optional
+	StartAt time.Time // optional
+	EndAt   time.Time // optional
+}
+
+type GetTodayExecutions struct {
+	Symbol  string // optional
+	OrderId string // optional
+}
+
+type GetAllExecutions struct {
+	Symbol  string    // optional
+	OrderId string    // optional
+	StartAt time.Time // optional
+	EndAt   time.Time // optional
+	Page    int64     // optional
+}
+
+type GetHistoryOrders struct {
+	Symbol  string         // optional
+	Status  []OrderStatus  // optional
+	Side    OrderSide      // optional
+	Market  openapi.Market // optional
+	StartAt int64          // optional
+	EndAt   int64          // optional
+}
+
+type GetTodayOrders struct {
+	Symbol  string         // optional
+	Status  []OrderStatus  // optional
+	Side    OrderSide      // optional
+	Market  openapi.Market // optional
+	OrderId string         // optional
+	// IsAttached, combined with OrderId, treats OrderId as an attached sub-order
+	// ID and returns that sub-order as an Order entry (not the parent order).
+	// Has no effect without OrderId.
+	IsAttached bool // optional
+}
+
+type GetFundPositions struct {
+	Symbols []string // optional
+}
+
+type GetStockPositions struct {
+	Symbols []string // optional
+}
+
+type GetCashFlow struct {
+	StartAt      int64 // start timestamp , required
+	EndAt        int64 // end timestamp, required
+	BusinessType BalanceType
+	Symbol       string
+	Page         int64
+	Size         int64
+}
+
+type ReplaceOrder struct {
+	OrderId         string          // required
+	Quantity        uint64          // required
+	Price           decimal.Decimal // LO / ELO / ALO / ODD / LIT Order Required
+	TriggerPrice    decimal.Decimal // LIT / MIT Order Required
+	LimitOffset     decimal.Decimal // TSLPAMT / TSLPPCT Order Required
+	TrailingAmount  decimal.Decimal // TSLPAMT / TSMAMT Order Required
+	TrailingPercent decimal.Decimal // TSLPPCT / TSMAPCT Order Required
+	Remark          string
+	AttachedParams  *ReplaceAttachedParams // optional, take-profit / stop-loss parameters
+	// DelayedUntil changes the time condition (unix timestamp seconds): 0 keeps the
+	// current time condition, ClearDelayedUntil (1) clears it, and any other value sets
+	// a new submit time, which must be later than now and no more than 90 days ahead.
+	DelayedUntil int64
+}
+
+// ClearDelayedUntil is the ReplaceOrder.DelayedUntil value that clears an order's time
+// condition, turning it into a regular order. Use this constant rather than a literal 1;
+// a DelayedUntil of 0 (the zero value) is not sent at all and keeps the current time
+// condition.
+const ClearDelayedUntil int64 = 1
+
+type SubmitOrder struct {
+	Symbol            string          // required
+	OrderType         OrderType       // required
+	Side              OrderSide       // required
+	SubmittedQuantity uint64          // required
+	SubmittedPrice    decimal.Decimal // LO / ELO / ALO / ODD / LIT Order Required
+	TriggerPrice      decimal.Decimal // LIT / MIT Order Required
+	LimitOffset       decimal.Decimal // TSLPAMT / TSLPPCT Order Required
+	TrailingAmount    decimal.Decimal // TSLPAMT / TSMAMT Order Required
+	TrailingPercent   decimal.Decimal // TSLPPCT / TSMAPCT Order Required
+	ExpireDate        *time.Time      // required when time_in_force is GTD
+	OutsideRTH        OutsideRTH
+	Remark            string
+	TimeInForce       TimeType              // required
+	AttachedParams    *SubmitAttachedParams // optional, take-profit / stop-loss parameters
+	// DelayedUntil makes this a time-condition order (unix timestamp seconds, 0 for a
+	// regular order): it is held in OrderDelayedNotReported status and only submitted
+	// at this time, which must be later than now and no more than 90 days ahead. Values
+	// are sent as-is, so any time must be greater than 1 (0 and 1 are wire sentinels).
+	DelayedUntil int64
+}
+
+// SubmitMultiLegOrder is the request for TradeContext.SubmitMultiLeg — a multi-leg
+// option combination order (vertical spreads, straddles, strangles, collars, etc.)
+// whose legs are placed together as a single strategy order.
+type SubmitMultiLegOrder struct {
+	Side              OrderSide                // required
+	OrderType         OrderType                // required
+	SubmittedQuantity decimal.Decimal          // required
+	Strategy          MultiLegStrategy         // required
+	Legs              []SubmitMultiLegOrderLeg // required
+	SubmittedPrice    decimal.Decimal          // required for limit order types such as LO
+	Remark            string                   // optional
+	ClientRequestId   string                   // optional
+	// DelayedUntil makes this a time-condition order (unix timestamp seconds, 0 for a
+	// regular order): it is held in OrderDelayedNotReported status and only submitted
+	// at this time, which must be later than now and no more than 90 days ahead. Only
+	// LO / MO support time conditions. Values are sent as-is, so any time must be
+	// greater than 1 (0 and 1 are wire sentinels).
+	DelayedUntil int64
+}
+
+// SubmitMultiLegOrderLeg is a single leg of a multi-leg combination order to submit.
+// The direction of each leg is implied by Strategy together with the order Side, not by
+// the sign of RatioQuantity; RatioQuantity must be a positive number.
+type SubmitMultiLegOrderLeg struct {
+	Symbol        string          // Option symbol, in ticker.region format (e.g. QQQ260731C764000.US)
+	RatioQuantity decimal.Decimal // Leg ratio quantity, must be positive
+}
+
+// SubmitAttachedParams is attached order (take-profit / stop-loss) parameters for SubmitOrder.
+type SubmitAttachedParams struct {
+	AttachedOrderType AttachedOrderType // required
+	ProfitTakerPrice  decimal.Decimal   // optional, take-profit trigger price
+	StopLossPrice     decimal.Decimal   // optional, stop-loss trigger price
+	TimeInForce       TimeType          // optional
+	ExpireTime        int64             // optional, unix timestamp seconds, used when TimeInForce is GTD
+	ActivateOrderType OrderType         // optional, order type to submit after trigger
+	// ProfitTakerSubmitPrice is required when ActivateOrderType is LIT.
+	ProfitTakerSubmitPrice decimal.Decimal
+	// StopLossSubmitPrice is required when ActivateOrderType is LIT.
+	StopLossSubmitPrice decimal.Decimal
+	ActivateRTH         OutsideRTH // optional, RTH setting for the activated order
+	// ProfitTakerDepthLevel is the bid/ask depth level for the take-profit limit order
+	// submitted price, valid when ActivateOrderType is LIT (optional, 0 is not sent).
+	ProfitTakerDepthLevel int32
+	// StopLossDepthLevel is the bid/ask depth level for the stop-loss limit order
+	// submitted price, valid when ActivateOrderType is LIT (optional, 0 is not sent).
+	StopLossDepthLevel int32
+}
+
+// ReplaceAttachedParams is attached order (take-profit / stop-loss) parameters for ReplaceOrder.
+type ReplaceAttachedParams struct {
+	AttachedOrderType AttachedOrderType // required
+	ProfitTakerPrice  decimal.Decimal   // optional, take-profit trigger price
+	StopLossPrice     decimal.Decimal   // optional, stop-loss trigger price
+	TimeInForce       TimeType          // optional
+	ExpireTime        int64             // optional, unix timestamp seconds, used when TimeInForce is GTD
+	ProfitTakerId     int64             // optional, existing take-profit order ID to modify
+	StopLossId        int64             // optional, existing stop-loss order ID to modify
+	CancelAllAttached bool              // optional, cancel all attached orders
+	MainId            int64             // optional, main order ID
+	Quantity          decimal.Decimal   // optional, attached order quantity
+	MarketPrice       decimal.Decimal   // optional
+	ActivateOrderType OrderType         // optional, order type to submit after trigger
+	// ProfitTakerSubmitPrice is required when ActivateOrderType is LIT.
+	ProfitTakerSubmitPrice decimal.Decimal
+	// StopLossSubmitPrice is required when ActivateOrderType is LIT.
+	StopLossSubmitPrice decimal.Decimal
+	ActivateRTH         OutsideRTH // optional, RTH setting for the activated order
+	// ProfitTakerDepthLevel is the bid/ask depth level for the take-profit limit order
+	// submitted price, valid when ActivateOrderType is LIT (optional, 0 is not sent).
+	ProfitTakerDepthLevel int32
+	// StopLossDepthLevel is the bid/ask depth level for the stop-loss limit order
+	// submitted price, valid when ActivateOrderType is LIT (optional, 0 is not sent).
+	StopLossDepthLevel int32
+}
+
+type GetEstimateMaxPurchaseQuantity struct {
+	Symbol    string
+	OrderType OrderType
+	Price     decimal.Decimal
+	Currency  string
+	OrderId   string
+	Side      OrderSide
+}
+
+type GetAccountBalance struct {
+	Currency Currency // optional
+}

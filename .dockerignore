@@ -1,0 +1,12 @@
+.git
+.agents
+.codex
+.aws
+.env
+.env.*
+bin
+coverage.out
+
+**/__pycache__
+live-test-results.json
+live-test-extended.json

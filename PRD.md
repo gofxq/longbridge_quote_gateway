@@ -2,7 +2,7 @@
 
 **项目名称：Longbridge Quote Gateway**
 
-**目标：** 将 [Longbridge OpenAPI](https://open.longbridge.com/zh-CN/docs?utm_source=chatgpt.com) 提供的行情能力封装成一个可通过 Docker 部署的 HTTP REST 服务，客户端只需要提供一个简单的 Token，即可查询美股、港股、A 股及相关金融产品的行情。
+**目标：** 将 [Longbridge OpenAPI](https://open.longbridge.com/zh-CN/docs) 提供的行情能力封装成一个可通过 Docker 部署的 HTTP REST 服务，客户端只需要提供一个简单的 Token，即可查询美股、港股、A 股及相关金融产品的行情。
 
 ## **一、总体设计**
 
@@ -68,12 +68,6 @@ flowchart LR
 
 官方 SDK 已对行情接口实现频率控制，调用速度过快时会主动延迟。网关增加限流主要是为了保护服务和控制请求队列，而不是重新实现全部上游限流逻辑。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-open.longbridge.com+3
-
-
-
 **核心原则：只查询行情，不支持交易。**
 
 系统不创建交易上下文，不暴露下单、撤单、资金划转、账户资产等接口，避免将行情网关变成具有交易权限的服务。
@@ -100,12 +94,6 @@ open.longbridge.com+3
 
 以上 SDK 方法已在 Longbridge 官方 Go SDK 中提供。
 
-[image](https://www.google.com/s2/favicons?domain=https://pkg.go.dev\&sz=32)
-
-Go Packages+2
-
-
-
 第二阶段还可以封装期权链、期权报价、轮证报价、资金流向及经纪队列查询。接口统一经过鉴权和缓存，内部不需要修改 Longbridge SDK。
 
 ### **2.2 股票代码规范**
@@ -122,12 +110,6 @@ Go Packages+2
 | ETF      | `QQQM.US`   | 美股 ETF |
 
 新加坡市场的实时行情目前未通过 Longbridge Developers API 开放，因此不将 `.SG` 纳入默认支持范围。
-
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-Longbridge Developers
-
-
 
 处理规则：
 
@@ -205,12 +187,6 @@ Authorization: Bearer YOUR_GATEWAY_TOKEN
 
 官方报价包含最新价、昨收价、开高低、成交量、成交额、交易状态及盘前盘后等字段。涨跌幅属于网关的衍生计算字段。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-Longbridge Developers+1
-
-
-
 需要特别区分两个时间：
 
 - `timestamp`：Longbridge 返回的市场数据时间。
@@ -221,7 +197,7 @@ Longbridge Developers+1
 ### **2.4 单只股票行情**
 
 ```
-curl "http://localhost:8080/api/v1/quotes/AAPL.US" \
+curl "http://localhost:12280/api/v1/quotes/AAPL.US" \
   -H "Authorization: Bearer YOUR_GATEWAY_TOKEN"
 ```
 
@@ -257,12 +233,6 @@ GET /api/v1/candlesticks?symbol=AAPL.US&period=1d&count=100&adjust=none
 
 普通 K 线接口最多返回最近 1000 根。历史查询接口与普通 K 线接口分开，避免调用方误以为普通接口能够获取任意时间范围的数据。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-Longbridge Developers
-
-
-
 **历史 K 线**
 
 ```
@@ -273,24 +243,18 @@ GET /api/v1/candlesticks/history?symbol=AAPL.US&period=1d&start=2026-01-01&end=2
 
 上游按日期区间查询最多返回 1000 根 K 线；同时指定起止日期、区间超过 1000 根时，会优先返回靠近结束日期的 1000 根，不能依靠上游报错判断数据是否完整。网关返回的数据按 `timestamp` 升序排列，并在顶层 `meta` 中增加以下字段：
 
-| 字段 | 语义 |
-| ---- | ---- |
-| `requested_start` / `requested_end` | 调用方请求的起止日期 |
-| `returned_start` / `returned_end` | 实际首尾 K 线的 UTC RFC 3339 时间；空结果时为 `null` |
-| `returned_count` | 实际返回根数 |
-| `possibly_truncated` | 返回达到上游 1000 根上限时为 `true`，否则为 `false` |
+| 字段                                | 语义                                                 |
+| ----------------------------------- | ---------------------------------------------------- |
+| `requested_start` / `requested_end` | 调用方请求的起止日期                                 |
+| `returned_start` / `returned_end`   | 实际首尾 K 线的 UTC RFC 3339 时间；空结果时为 `null` |
+| `returned_count`                    | 实际返回根数                                         |
+| `possibly_truncated`                | 返回达到上游 1000 根上限时为 `true`，否则为 `false`  |
 
 `possibly_truncated=true` 表示无法确认区间完整，即使区间恰好只有 1000 根也保守标记。首版不自动分页，也不承诺一次响应覆盖完整区间；调用方需要完整数据时，应缩小日期区间后重新查询，合并时按 `timestamp` 去重。分钟线在单个交易日内也可能达到上限，因此只按整日拆分不能保证完整；后续可提供基于时间偏移的分页接口。若调整网关数量配置，`MAX_CANDLESTICKS` 只用于普通 K 线的 `count` 校验，历史接口继续按上游硬上限判断是否可能截断。
 
 依据：[Longbridge 历史 K 线查询规则](https://open.longbridge.com/zh-CN/docs/quote/pull/history-candlestick)。缓存命中时也必须保留这些范围和截断信息。
 
 另外，官方文档对 K 线查询设置了按账户等级区分的每月标的配额，因此缓存虽然有助于降低调用次数，但不能替代对配额的管理。
-
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-Longbridge Developers
-
-
 
 ### **2.6 盘口、逐笔和分时接口**
 
@@ -308,22 +272,16 @@ GET /api/v1/intraday?symbol=700.HK
 
 对于没有权限的数据，返回明确的权限错误，不伪造或补全缺失盘口数据。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-Longbridge Developers+1
-
-
-
 ### **2.7 批量结果与部分失败**
 
 批量报价及证券基本信息接口统一采用以下约定：
 
-| 情况 | HTTP 状态 | 顶层 `code` | `data` / `errors` |
-| ---- | --------- | ----------- | ----------------- |
-| 所有标的成功 | 200 | `OK` | 成功对象数组 / 空数组 |
-| 部分标的成功 | 200 | `PARTIAL_SUCCESS` | 成功对象数组 / 逐标的错误数组 |
-| 所有标的失败 | 502 | `BATCH_FAILED` | 空数组 / 逐标的错误数组 |
-| 请求整体未通过鉴权、参数校验或入口限流 | 对应的 401、400、429 | 对应错误码 | `null` / 空数组 |
+| 情况                                                 | HTTP 状态                 | 顶层 `code`       | `data` / `errors`             |
+| ---------------------------------------------------- | ------------------------- | ----------------- | ----------------------------- |
+| 所有标的成功                                         | 200                       | `OK`              | 成功对象数组 / 空数组         |
+| 部分标的成功                                         | 200                       | `PARTIAL_SUCCESS` | 成功对象数组 / 逐标的错误数组 |
+| 所有标的失败                                         | 502                       | `BATCH_FAILED`    | 空数组 / 逐标的错误数组       |
+| 请求整体未通过鉴权、参数校验、入口限流或在途容量检查 | 对应的 401、400、429、503 | 对应错误码        | `null` / 空数组               |
 
 每个错误对象包含 `symbol`、`code`、`message`、`http_status`；其中 `http_status` 表示该标的失败的分类，不改变批量 HTTP 状态。批量处理的整体 10 秒期限耗尽时，将仍未完成的标的归为 `REQUEST_TIMEOUT`（504），已完成结果按上表返回；若响应已因客户端断开而无法发送，则只结束等待。
 
@@ -374,12 +332,6 @@ Longbridge 官方支持两种方式：
 
 Longbridge 当前文档推荐 OAuth 2.0，传统 API Key 作为兼容方案。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-open.longbridge.com
-
-
-
 为了快速完成第一个 Docker 版本，可以先支持传统 API Key；正式长期运行时再启用 OAuth。
 
 ### **3.2 安全边界**
@@ -407,7 +359,7 @@ openssl rand -hex 32
 
 ### **4.1 缓存要求**
 
-**基础配置：所有成功获取的行情数据缓存 60 秒。**
+**基础配置：成功获取且符合容量限制的行情数据缓存 60 秒；TTL 是最长保留时间，容量不足时允许提前淘汰。**
 
 ```
 CACHE_TTL=60s
@@ -572,16 +524,17 @@ singleflight 合并
 
 默认策略：
 
-| 情况         | 处理             |
-| ------------ | ---------------- |
-| 查询成功     | 缓存 60 秒       |
-| 参数不合法   | 不缓存           |
-| Token 不合法 | 不缓存           |
-| 上游权限不足 | 不写入行情缓存   |
-| 上游超时     | 不写入行情缓存   |
-| 上游限流     | 不写入行情缓存   |
-| 缓存过期     | 等待新的上游结果 |
-| 服务重启     | 内存缓存清空     |
+| 情况                       | 处理                                    |
+| -------------------------- | --------------------------------------- |
+| 查询成功且满足缓存容量限制 | 缓存最多 60 秒，容量不足时可提前淘汰    |
+| 单项超过缓存预算           | 业务成功，跳过缓存并明确 `stored=false` |
+| 参数不合法                 | 不缓存                                  |
+| Token 不合法               | 不缓存                                  |
+| 上游权限不足               | 不写入行情缓存                          |
+| 上游超时                   | 不写入行情缓存                          |
+| 上游限流                   | 不写入行情缓存                          |
+| 缓存过期                   | 等待新的上游结果                        |
+| 服务重启                   | 内存缓存清空                            |
 
 不建议默认返回超过 60 秒的过期数据，否则容易违反调用方对时效性的预期。
 
@@ -655,12 +608,23 @@ longbridge-quote-gateway/
 
 示意：
 
-```
+```go
+type SymbolQueryError struct {
+    Symbol  string
+    Code    string
+    Message string
+}
+
+type QuoteBatchResult struct {
+    Quotes []Quote
+    Errors []SymbolQueryError
+}
+
 type QuoteProvider interface {
     GetQuotes(
         ctx context.Context,
         symbols []string,
-    ) ([]Quote, error)
+    ) (QuoteBatchResult, error)
 
     GetCandlesticks(
         ctx context.Context,
@@ -687,6 +651,8 @@ type QuoteProvider interface {
 ```
 
 这里的 `Quote`、`Candlestick`、`Depth` 等都是网关自定义的数据结构。
+
+该接口为核心方法示意，其他端点按相同原则扩展。`QuoteBatchResult` 用于表达逐标的成功及失败；返回值中的 `error` 仅表示整个上游调用失败。适配层将上游遗漏标的补为 `SYMBOL_DATA_MISSING`，并确保每个请求标的恰好有一份结果或错误。HTTP 层负责按 2.7 映射状态和组装信封，缓存及请求来源信息由共享任务层维护。
 
 Longbridge SDK 返回的对象应通过 `mapper.go` 转换成这些结构。
 
@@ -746,12 +712,6 @@ defer quoteCtx.Close()
 
 上述初始化及查询方法与官方 Go SDK 文档一致。
 
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-open.longbridge.com+1
-
-
-
 **特别注意：** 不能在每次 HTTP 请求时创建新的 `QuoteContext`，否则会产生额外连接开销，并可能触及账户的长连接限制。
 
 连接异常后还需要：
@@ -771,7 +731,9 @@ open.longbridge.com+1
 
 ```
 # HTTP
-HTTP_ADDR=:8080
+HTTP_ADDR=:12280
+HTTP_TIMEOUT=10s
+HTTP_MAX_INFLIGHT=128
 
 # Gateway authentication
 GATEWAY_TOKEN=REPLACE_WITH_RANDOM_TOKEN
@@ -779,11 +741,16 @@ GATEWAY_TOKEN=REPLACE_WITH_RANDOM_TOKEN
 # Cache
 CACHE_TTL=60s
 CACHE_MAX_ENTRIES=20000
+CACHE_MAX_BYTES=67108864
+CACHE_MAX_ITEM_BYTES=2097152
 
 # Upstream request limits
 UPSTREAM_RPS=8
 UPSTREAM_MAX_CONCURRENT=4
 UPSTREAM_TIMEOUT=8s
+UPSTREAM_QUEUE_SIZE=32
+UPSTREAM_MAX_PENDING_KEYS=512
+UPSTREAM_QUEUE_TIMEOUT=1s
 
 # Gateway request limits
 MAX_BATCH_SYMBOLS=50
@@ -806,7 +773,7 @@ LOG_FORMAT=json
 
 其中 `UPSTREAM_RPS=8` 和 `UPSTREAM_MAX_CONCURRENT=4` 是网关设计值，刻意低于 Longbridge 的上限，预留一定余量。
 
-这并不意味着请求一定能够在 8 秒内完成。如果大量请求进入队列，应设置最大队列等待时间，并在请求超时后返回相应错误。
+`HTTP_TIMEOUT` 覆盖一次 HTTP 请求从进入处理到结果生成的总时间；`UPSTREAM_TIMEOUT` 从共享任务登记开始计时，包含批处理、排队、限速及并发等待、SDK 调用。等待调度最多 1 秒，具体容量和失败行为见 7.2。配置中的数量、容量及持续时间必须为正，`UPSTREAM_RPS` 不得超过 10，`UPSTREAM_MAX_CONCURRENT` 不得超过 5，`MAX_CANDLESTICKS` 不得超过 1000；超出上游硬限制或单项缓存预算大于总预算时启动失败。
 
 ### **6.2 Dockerfile**
 
@@ -839,7 +806,7 @@ COPY --from=builder \
     /out/quote-gateway \
     /quote-gateway
 
-EXPOSE 8080
+EXPOSE 12280
 
 USER nonroot:nonroot
 
@@ -867,7 +834,7 @@ services:
     init: true
 
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:12280:12280"
 
     env_file:
       - .env
@@ -917,7 +884,7 @@ docker compose logs -f quote-gateway
 
 ```
 curl \
-  "http://127.0.0.1:8080/api/v1/quotes?symbols=AAPL.US,TSLA.US" \
+  "http://127.0.0.1:12280/api/v1/quotes?symbols=AAPL.US,TSLA.US" \
   -H "Authorization: Bearer YOUR_GATEWAY_TOKEN"
 ```
 
@@ -932,10 +899,6 @@ curl \
 ```
 ~/.longbridge/openapi/tokens/<client_id>
 ```
-
-[image](https://www.google.com/s2/favicons?domain=https://open.longbridge.com\&sz=32)
-
-open.longbridge.com
 
 建议使用两阶段初始化：
 
@@ -961,63 +924,156 @@ environment:
 
 ### **7.1 统一响应结构**
 
-成功：
+所有业务响应始终包含 `code`、`message`、`data`、`errors`、`request_id`、`meta` 六个顶层字段。`code` 始终为字符串，成功使用 `OK`；`message` 为字符串，`errors` 始终为数组，`meta` 始终为对象。`request_id` 始终在顶层，并同步返回在 `X-Request-ID` 响应头中；服务为每个 HTTP 请求生成独立 ID，不能缓存或复用共享上游任务的 ID。
 
-```
+成功（以下以单只股票报价为例；价格为演示值）：
+
+```json
 {
-  "code": 0,
+  "code": "OK",
   "message": "success",
-  "data": {},
+  "data": {
+    "symbol": "AAPL.US",
+    "last_done": "268.50",
+    "prev_close": "266.20",
+    "open": "267.00",
+    "high": "270.10",
+    "low": "265.90",
+    "volume": 51200000,
+    "turnover": "13747200000",
+    "timestamp": 1794513600,
+    "change": "2.30",
+    "change_percent": "0.86",
+    "pre_market_quote": null,
+    "post_market_quote": null,
+    "overnight_quote": null
+  },
+  "errors": [],
+  "request_id": "req-example-002",
   "meta": {
-    "cache_hit": true
+    "cache_hit": true,
+    "symbols": {
+      "AAPL.US": {
+        "cache_hit": true,
+        "stored": true,
+        "cached_at": "2026-11-13T11:00:00Z",
+        "expires_at": "2026-11-13T11:01:00Z",
+        "ttl_seconds": 60
+      }
+    }
   }
 }
 ```
 
-失败：
+单标的失败（HTTP 504）：
 
-```
+```json
 {
   "code": "UPSTREAM_TIMEOUT",
   "message": "Longbridge quote request timed out",
   "data": null,
-  "request_id": "req-example-002"
+  "errors": [],
+  "request_id": "req-example-003",
+  "meta": {
+    "cache_hit": false
+  }
 }
 ```
 
-建议使用：
+批量部分失败（查询 `AAPL.US,NVDA.US`，HTTP 200）：
 
-| HTTP 状态 | 业务错误码                      | 场景                        |
-| --------- | ------------------------------- | --------------------------- |
-| 400       | `INVALID_PARAMETER`             | 股票代码、周期、数量非法    |
-| 401       | `UNAUTHORIZED`                  | Token 无效或缺失            |
-| 403       | `MARKET_DATA_PERMISSION_DENIED` | Longbridge 行情权限不足     |
-| 404       | `SYMBOL_NOT_FOUND`              | 已确认标的不存在            |
-| 429       | `RATE_LIMITED`                  | 网关主动限流                |
-| 502       | `UPSTREAM_ERROR`                | Longbridge 返回异常         |
-| 503       | `UPSTREAM_UNAVAILABLE`          | Longbridge 服务或连接不可用 |
-| 504       | `UPSTREAM_TIMEOUT`              | 上游请求超时                |
+```json
+{
+  "code": "PARTIAL_SUCCESS",
+  "message": "some symbols failed",
+  "data": [
+    {
+      "symbol": "AAPL.US",
+      "last_done": "268.50",
+      "prev_close": "266.20",
+      "open": "267.00",
+      "high": "270.10",
+      "low": "265.90",
+      "volume": 51200000,
+      "turnover": "13747200000",
+      "timestamp": 1794513600,
+      "change": "2.30",
+      "change_percent": "0.86",
+      "pre_market_quote": null,
+      "post_market_quote": null,
+      "overnight_quote": null
+    }
+  ],
+  "errors": [
+    {
+      "symbol": "NVDA.US",
+      "code": "UPSTREAM_TIMEOUT",
+      "message": "Longbridge quote request timed out",
+      "http_status": 504
+    }
+  ],
+  "request_id": "req-example-004",
+  "meta": {
+    "cache_hit": false,
+    "symbols": {
+      "AAPL.US": {
+        "cache_hit": true,
+        "stored": true,
+        "cached_at": "2026-11-13T11:00:00Z",
+        "expires_at": "2026-11-13T11:01:00Z",
+        "ttl_seconds": 60
+      }
+    }
+  }
+}
+```
 
-对 SDK 的原始错误需要建立映射表，不能根据错误字符串简单判断。
+批量全部失败时使用 `code=BATCH_FAILED`、`data=[]`，`errors` 列出全部标的；其余字段结构与上例相同。整体请求在开始标的处理前被拒绝时使用 `data=null`、`errors=[]`。单标的错误由顶层 `code`、`message` 表达，无需在 `errors` 中重复。
 
-例如，权限不足与标的不存在属于不同情况；不能将它们统一映射为 404。
+单标的失败或整体拒绝请求时的 HTTP 状态及逐标的错误分类如下；批量完成后的 HTTP 状态以 2.7 为准：
+
+| HTTP 状态 | 业务错误码                      | 场景                          |
+| --------- | ------------------------------- | ----------------------------- |
+| 400       | `INVALID_PARAMETER`             | 股票代码、周期、数量非法      |
+| 401       | `UNAUTHORIZED`                  | Token 无效或缺失              |
+| 403       | `MARKET_DATA_PERMISSION_DENIED` | Longbridge 行情权限不足       |
+| 404       | `SYMBOL_NOT_FOUND`              | 已确认标的不存在              |
+| 429       | `RATE_LIMITED`                  | 网关主动入口限流              |
+| 502       | `UPSTREAM_ERROR`                | Longbridge 返回异常           |
+| 502       | `SYMBOL_DATA_MISSING`           | 上游成功响应中缺少请求标的    |
+| 503       | `UPSTREAM_UNAVAILABLE`          | Longbridge 服务或连接不可用   |
+| 503       | `UPSTREAM_QUEUE_FULL`           | 上游队列或待处理 Key 容量已满 |
+| 503       | `UPSTREAM_QUEUE_TIMEOUT`        | 等待上游调度超过 1 秒         |
+| 503       | `REQUEST_CAPACITY_EXCEEDED`     | HTTP 在途请求容量已满         |
+| 504       | `UPSTREAM_TIMEOUT`              | 共享上游任务总预算耗尽        |
+| 504       | `REQUEST_TIMEOUT`               | HTTP 请求总期限耗尽           |
+
+对 SDK 的原始错误需要建立映射表，不能根据错误字符串简单判断。例如，权限不足与标的不存在属于不同情况；不能将它们统一映射为 404。
 
 ### **7.2 超时设计**
 
-建议配置：
+所有行情端点共用以下预算；缓存命中不占用上游队列和调用次数：
 
-| 环节                 | 建议               |
-| -------------------- | ------------------ |
-| HTTP 请求总超时      | 10 秒              |
-| Longbridge 查询超时  | 8 秒               |
-| 单个上游请求并发上限 | 4                  |
-| 上游请求频率         | 8 次/秒            |
-| 队列满               | 快速返回 503       |
-| 客户端取消请求       | 取消不再需要的查询 |
+| 环节               | 默认约定                                             |
+| ------------------ | ---------------------------------------------------- |
+| HTTP 请求总超时    | 10 秒，包含鉴权、缓存、共享任务等待和结果组装        |
+| HTTP 在途请求上限  | 128 个，包括等待同一共享任务的各个 HTTP 请求         |
+| 共享上游任务总超时 | 8 秒，从任务登记开始，覆盖整个上游处理过程           |
+| 等待调度超时       | 1 秒，包含批处理窗口、队列、限速器和并发池等待       |
+| 上游调用并发上限   | 4 个；批量调用计为 1 个调用                          |
+| 上游请求频率       | 8 次/秒，平滑放行，突发容量为 1                      |
+| 上游排队容量       | 32 个待执行调用批次，不包括正在调用 SDK 的批次       |
+| 待处理 Key 上限    | 512 个唯一业务 Key，覆盖批处理窗口、排队和执行中任务 |
+| 容量不足           | 立即拒绝新增工作，不创建额外等待 goroutine           |
+| 客户端取消请求     | 立即退出该客户端的等待，不取消其他等待者仍需的任务   |
 
-由于多个客户端可以通过 `singleflight` 共用同一个上游请求，不能简单地把首个客户端的请求 Context 直接当作共享任务的完整生命周期。
+`HTTP_MAX_INFLIGHT` 在进入业务处理时无等待地获取名额，满额返回 503 `REQUEST_CAPACITY_EXCEEDED`。Key 上限、队列上限分别限制积压数据量及调用数量；原子登记新 Key 时若容量不足，不保留半完成的登记，并将该标的记录为 `UPSTREAM_QUEUE_FULL`。已存在的同 Key 任务可以继续被复用，但每个 HTTP 请求仍受在途请求上限约束。
 
-应让共享任务拥有独立且有上限的超时控制，客户端取消时只退出自己的等待过程。
+共享任务的 8 秒截止时间和 1 秒调度截止时间在首次登记时固定，后到等待者不能延长。合并成一批的 Key 使用其中最早的截止时间；从调度阶段进入 SDK 调用时使用剩余的总预算，不能重新获得完整 8 秒。调度阶段耗尽 1 秒时使用 `UPSTREAM_QUEUE_TIMEOUT`；SDK 调用耗尽共享任务总预算时使用 `UPSTREAM_TIMEOUT`。SDK 内部的限速等待也必须受传入 Context 约束，并通过实现测试验证。
+
+上游队列满、等待调度超时等错误发生在标的任务层时，按 2.7 组装批量结果；不要因为一个标的排队失败就丢弃其他已成功的结果。单标的请求使用 7.1 中对应状态码。HTTP 10 秒期限到达时，单标的返回 504 `REQUEST_TIMEOUT`，批量将未完成项标记为该错误并保留已完成结果；HTTP 写出还需配置有限的网络写超时。
+
+由于多个客户端可以共用同一个上游请求，不能将首个客户端的请求 Context 用作共享任务的完整生命周期。共享任务从应用生命周期 Context 派生，并持有上述独立截止时间。客户端取消时只退出自己的等待过程；首版允许已登记任务继续运行直到完成或超时，以便写入缓存，最多保留 8 秒。应用退出时取消所有共享任务，清理登记并唤醒等待者；不得使用没有超时和退出控制的后台 Context。
 
 ## **八、监控与运行维护**
 
@@ -1049,18 +1105,23 @@ GET /readyz
 
 建议至少记录：
 
-| 指标                                | 说明                |
-| ----------------------------------- | ------------------- |
-| `http_requests_total`               | HTTP 请求总数       |
-| `http_request_duration_seconds`     | 请求耗时            |
-| `cache_hits_total`                  | 缓存命中次数        |
-| `cache_misses_total`                | 缓存未命中次数      |
-| `cache_entries`                     | 当前缓存条目数      |
-| `upstream_requests_total`           | Longbridge 调用次数 |
-| `upstream_request_duration_seconds` | 上游查询耗时        |
-| `upstream_errors_total`             | 上游错误数          |
-| `upstream_inflight`                 | 正在执行的上游请求  |
-| `upstream_connected`                | 长连接状态          |
+| 指标                                | 说明                              |
+| ----------------------------------- | --------------------------------- |
+| `http_requests_total`               | HTTP 请求总数                     |
+| `http_request_duration_seconds`     | 请求耗时                          |
+| `cache_hits_total`                  | 缓存命中次数                      |
+| `cache_misses_total`                | 缓存未命中次数                    |
+| `cache_entries`                     | 当前缓存条目数                    |
+| `cache_bytes`                       | 缓存 Key 与业务负载字节数         |
+| `cache_evictions_total`             | 按原因区分的缓存淘汰次数          |
+| `cache_skipped_total`               | 单项超限等原因导致的未缓存次数    |
+| `upstream_requests_total`           | Longbridge 调用次数               |
+| `upstream_request_duration_seconds` | 上游查询耗时                      |
+| `upstream_errors_total`             | 上游错误数                        |
+| `upstream_inflight`                 | 正在执行的上游请求                |
+| `upstream_queue_length`             | 等待调度的调用批次数              |
+| `upstream_pending_keys`             | 已登记且尚未完成的唯一业务 Key 数 |
+| `upstream_connected`                | 长连接状态                        |
 
 可以将 `/metrics` 限制为本机或内网访问，后续接入 Prometheus。
 
@@ -1100,7 +1161,7 @@ GET /readyz
 ```mermaid
 flowchart LR
     client["外部客户端"] -->|HTTPS| caddy["Caddy"]
-    caddy -->|HTTP / 内网| gateway["Quote Gateway :8080"]
+    caddy -->|HTTP / 内网| gateway["Quote Gateway :12280"]
     gateway -->|WebSocket / HTTPS| longbridge["Longbridge"]
 ```
 
@@ -1116,7 +1177,7 @@ Caddyfile：
 quote.h.example.com {
     encode zstd gzip
 
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:12280
 }
 ```
 
@@ -1142,29 +1203,45 @@ curl \
 
 建议按三个阶段实现。
 
-| 阶段         | 开发内容                                                | 完成标准                       |
-| ------------ | ------------------------------------------------------- | ------------------------------ |
-| P0：基础可用 | Token 鉴权、最新报价、基本信息、K 线、60 秒缓存、Docker | 能通过 curl 查询行情，缓存正常 |
-| P1：完善行情 | 历史 K 线、盘口、逐笔、分时、指标、批量优化             | 支持主要行情查询，减少重复请求 |
-| P2：工程增强 | OAuth、监控、请求限流、错误恢复、Swagger、自动化测试    | 能稳定长期运行                 |
+| 阶段         | 开发内容                                                                                            | 完成标准                                 |
+| ------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| P0：基础可用 | Token 鉴权、最新报价、基本信息、K 线、有界缓存及队列、按 Key 合并、统一响应、Docker、核心自动化测试 | 能通过 curl 查询行情，缓存及容量边界正确 |
+| P1：完善行情 | 历史 K 线、盘口、逐笔、分时、指标、批处理窗口调优                                                   | 支持主要行情查询，减少重复请求           |
+| P2：工程增强 | OAuth、监控、入口限流、重连策略增强、Swagger、扩展自动化测试                                        | 能稳定长期运行                           |
 
 ### **10.1 核心验收测试**
 
-| 测试     | 操作                     | 预期                     |
-| -------- | ------------------------ | ------------------------ |
-| 鉴权测试 | 不带 Token 请求          | 返回 401                 |
-| 鉴权测试 | 使用错误 Token           | 返回 401                 |
-| 首次查询 | 请求 AAPL.US             | 调用上游一次             |
-| 缓存命中 | 60 秒内重复请求          | 不调用上游               |
-| 缓存过期 | 60 秒后请求              | 重新查询上游             |
-| 批量缓存 | 查询部分已缓存的标的     | 只请求缺失标的           |
-| 并发合并 | 100 个并发请求同一股票   | 理想情况下仅调用上游一次 |
-| 参数校验 | 单次查询超过 50 个标的   | 返回 400                 |
-| 上游限流 | 模拟大量不同股票查询     | 不超过配置的频率         |
-| 上游断线 | 模拟 Longbridge 连接异常 | 返回适当错误并尝试恢复   |
-| 容器重启 | 重启 Docker 服务         | 能重新初始化连接和缓存   |
+| 测试           | 操作                                           | 预期                                                    |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| 鉴权测试       | 不带 Token 请求                                | 返回 401                                                |
+| 鉴权测试       | 使用错误 Token                                 | 返回 401                                                |
+| 首次查询       | 请求 AAPL.US                                   | 调用上游一次                                            |
+| 缓存命中       | 60 秒内重复请求                                | 不调用上游                                              |
+| 缓存过期       | 60 秒后请求                                    | 重新查询上游                                            |
+| 批量缓存       | 查询部分已缓存的标的                           | 只请求缺失标的                                          |
+| 并发合并       | 100 个并发请求同一股票，查询成功且可缓存       | 仅调用上游一次                                          |
+| 缓存竞争       | 请求首次未命中后暂停，另一请求查询并写入后恢复 | 共享任务二次检查命中，不重复查询上游                    |
+| 交叉批量       | 并发查询 AAPL/TSLA 和 TSLA/NVDA                | TSLA 同时最多存在一个共享任务                           |
+| 部分失败       | AAPL 命中缓存、NVDA 上游超时                   | HTTP 200、`PARTIAL_SUCCESS`，保留 AAPL 并列出 NVDA 错误 |
+| 全部失败       | 所有批量标的均失败                             | HTTP 502、`BATCH_FAILED`，逐标的错误完整                |
+| 上游遗漏       | 上游成功但少返回一个标的                       | 缺失项为 `SYMBOL_DATA_MISSING`，不伪造 404              |
+| 响应一致性     | 分别校验成功、部分失败和失败响应               | `code` 为字符串，`request_id` 在顶层，六个信封字段齐全  |
+| 混合缓存时间   | 返回两个不同写入时间的标的                     | 逐标的时间准确，顶层不提供单一缓存时间                  |
+| 衍生字段       | 涨跌金额及百分比含舍入边界、缺值或零昨收       | 使用 decimal 规则，百分比无除零，缺值返回 `null`        |
+| 历史截断（P1） | 模拟返回 999、1000 根历史 K 线及空结果         | 截断标记分别为 false、true、false，范围信息准确         |
+| 缓存容量       | 写入不同大小的 K 线结果直至达到预算            | 先清理过期项再 LRU 淘汰，字节及条目预算均不超限         |
+| 大项缓存       | 单项超过 2 MiB                                 | 业务成功，`stored=false` 且缓存时间为 `null`            |
+| HTTP 容量      | 占满 128 个在途请求后继续请求                  | 立即返回 503 `REQUEST_CAPACITY_EXCEEDED`                |
+| 上游容量       | 分别占满队列或唯一 Key 容量                    | 新任务报 `UPSTREAM_QUEUE_FULL`，无登记泄漏              |
+| 调度等待       | 限速或并发等待超过 1 秒                        | `UPSTREAM_QUEUE_TIMEOUT`，不再调用 SDK                  |
+| 总预算         | 模拟排队和 SDK 调用、HTTP 等待分别超时         | 不重置截止时间，使用对应错误并唤醒所有等待者            |
+| 取消等待       | 首个客户端取消、第二个仍等待同一任务           | 第二个仍能取得结果，共享任务不被首个客户端取消          |
+| 参数校验       | 单次查询超过 50 个标的                         | 返回 400                                                |
+| 上游限流       | 模拟大量不同股票查询                           | 不超过配置的频率                                        |
+| 上游断线       | 模拟 Longbridge 连接异常                       | 返回适当错误并尝试恢复                                  |
+| 容器重启       | 重启 Docker 服务                               | 能重新初始化连接和缓存                                  |
 
-对于并发缓存测试，重点验证的是**同一标的在同一个过期窗口内只有一个正在执行的上游任务**。
+对于并发缓存测试，重点验证的是**每个规范化业务 Key 同一时刻最多存在一个共享查询任务**；成功结果写入后，只要该项仍在有效缓存中，新请求不得重复访问上游。错误或超大结果不缓存，后续查询允许再次请求上游；提前淘汰也允许重新查询。
 
 ### **10.2 性能目标**
 
@@ -1245,37 +1322,34 @@ curl \
 
 目前官方 Go SDK 已覆盖这套方案主要需要的行情查询方法。
 
-[image](https://www.google.com/s2/favicons?domain=https://pkg.go.dev\&sz=32)
-
-Go Packages
-
-
-
 ## **十二、最终推荐的 MVP 规格**
 
 综合上述设计，我建议第一版采用以下配置：
 
-| 维度           | 最终方案                              |
-| -------------- | ------------------------------------- |
-| 项目名称       | Longbridge Quote Gateway              |
-| 语言           | Go                                    |
-| HTTP 框架      | Gin                                   |
-| 上游           | Longbridge 官方 Go SDK                |
-| 对外协议       | REST JSON                             |
-| 对外认证       | 单静态 Bearer Token                   |
-| 上游认证       | 初期 API Key，后续 OAuth 2.0          |
-| 缓存           | 进程内缓存，TTL 60 秒                 |
-| 缓存方式       | 按标的缓存 + singleflight             |
-| 默认接口       | 报价、证券信息、K 线                  |
-| 扩展接口       | 历史 K 线、分时、盘口、逐笔、计算指标 |
-| 最大单次标的数 | 50                                    |
-| 最大上游并发   | 4                                     |
-| 上游请求频率   | 8 次/秒                               |
-| 数据存储       | 不需要数据库                          |
-| 部署方式       | 单 Docker 容器                        |
-| HTTPS          | 复用 Caddy                            |
-| 服务运行       | 单实例、单 `QuoteContext`             |
-| 资源配置       | 1 vCPU、256 MB 内存起步               |
+| 维度           | 最终方案                                       |
+| -------------- | ---------------------------------------------- |
+| 项目名称       | Longbridge Quote Gateway                       |
+| 语言           | Go                                             |
+| HTTP 框架      | Gin                                            |
+| 上游           | Longbridge 官方 Go SDK                         |
+| 对外协议       | REST JSON                                      |
+| 对外认证       | 单静态 Bearer Token                            |
+| 上游认证       | 初期 API Key，后续 OAuth 2.0                   |
+| 缓存           | 进程内缓存，TTL 60 秒                          |
+| 缓存方式       | 按标的缓存 + singleflight                      |
+| 默认接口       | 报价、证券信息、K 线                           |
+| 扩展接口       | 历史 K 线、分时、盘口、逐笔、计算指标          |
+| 最大单次标的数 | 50                                             |
+| 最大上游并发   | 4                                              |
+| 上游请求频率   | 8 次/秒                                        |
+| 缓存负载预算   | 64 MiB，单项最多 2 MiB，LRU 淘汰               |
+| HTTP 在途上限  | 128 个请求                                     |
+| 上游排队上限   | 32 个调用批次、512 个待处理 Key，等待最多 1 秒 |
+| 数据存储       | 不需要数据库                                   |
+| 部署方式       | 单 Docker 容器                                 |
+| HTTPS          | 复用 Caddy                                     |
+| 服务运行       | 单实例、单 `QuoteContext`                      |
+| 资源配置       | 1 vCPU、256 MB 内存起步                        |
 
 **最重要的设计决策是：将服务定位为一个轻量、只读、带一分钟缓存的 Longbridge API Gateway，而不是重新实现一个行情系统。**
 
@@ -1283,8 +1357,8 @@ Go Packages
 
 官方参考资料：
 
-- [Longbridge OpenAPI 文档](https://open.longbridge.com/zh-CN/docs?utm_source=chatgpt.com)
-- [官方 SDK 快速开始](https://open.longbridge.com/zh-CN/docs/getting-started?utm_source=chatgpt.com)
-- [行情接口概览](https://open.longbridge.com/zh-CN/docs/quote/overview?utm_source=chatgpt.com)
-- [Go SDK Quote API](https://pkg.go.dev/github.com/longbridge/openapi-go/quote?utm_source=chatgpt.com)
-- [官方 Go SDK GitHub 仓库](https://github.com/longbridge/openapi-go?utm_source=chatgpt.com)
+- [Longbridge OpenAPI 文档](https://open.longbridge.com/zh-CN/docs)
+- [官方 SDK 快速开始](https://open.longbridge.com/zh-CN/docs/getting-started)
+- [行情接口概览](https://open.longbridge.com/zh-CN/docs/quote/overview)
+- [Go SDK Quote API](https://pkg.go.dev/github.com/longbridge/openapi-go/quote)
+- [官方 Go SDK GitHub 仓库](https://github.com/longbridge/openapi-go)

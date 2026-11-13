@@ -1,0 +1,22 @@
+services:
+  quote-gateway:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - ":12280:12280"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    mem_limit: 256m
+    environment:
+      HTTP_ADDR: ":12280"
+      GOMEMLIMIT: 200MiB
+    cpus: 1
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "/quote-gateway", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
