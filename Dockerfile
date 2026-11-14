@@ -1,4 +1,5 @@
-FROM golang:1.26.8-bookworm AS builder
+# Keep the build toolchain on a patched, minimal base; CGO is disabled below.
+FROM golang:1.27.4-alpine3.24 AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY third_party/openapi-go ./third_party/openapi-go

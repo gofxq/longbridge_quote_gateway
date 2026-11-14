@@ -4,7 +4,7 @@
 
 ## 启动
 
-需要 Docker Compose，或 Go 1.26.8。复制环境模板，生成网关 Token，填写 Longbridge 凭证：
+需要 Docker Compose，或 Go 1.27.4。复制环境模板，生成网关 Token，填写 Longbridge 凭证：
 
 ```sh
 cp .env.example .env
@@ -28,6 +28,28 @@ curl -H "Authorization: Bearer $GATEWAY_TOKEN" \
 ```
 
 浏览器打开 `/docs` 查看 Swagger UI（静态资源来自固定版本 CDN），点击 Authorize 输入网关 Token。离线客户端可使用仓库的 `internal/server/openapi.json`，服务的 `/openapi.json` 与 `/metrics` 均需要 Bearer Token。
+
+## Docker 镜像自动发布
+
+GitHub Actions 在测试通过后构建 Linux amd64 镜像，发布到 `ghcr.io/gofxq/longbridge_quote_gateway`：
+
+- 仅推送 Git tag 时发布：例如推送 `v1.0.0`，同时发布 `v1.0.0`、`sha-<完整提交 SHA>` 和 `latest` 镜像标签。
+- 所有分支推送（包括 `master`）、PR 和手动运行：只测试和构建，不发布镜像。
+- `latest` 随每次成功的 tag 发布更新，指向该次发布的镜像。
+
+发布使用 GitHub 自动提供的 `GITHUB_TOKEN` 和工作流声明的 `packages: write` 权限，无需额外配置仓库 Secret。首次发布后，如需匿名拉取，在 GitHub Packages 中将该镜像包的可见性设为 Public；私有包需要先登录 GHCR。
+
+```sh
+docker pull ghcr.io/gofxq/longbridge_quote_gateway:v1.0.0
+docker run -d --name quote-gateway --restart unless-stopped \
+  --env-file .env -e HTTP_ADDR=:12280 -e GOMEMLIMIT=200MiB \
+  -p 127.0.0.1:12280:12280 --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --tmpfs /tmp:size=16m,mode=1777 \
+  --memory 256m --cpus 1 --stop-timeout 20 \
+  ghcr.io/gofxq/longbridge_quote_gateway:v1.0.0
+```
+
+使用已发布镜像替代本地 Compose 实例时，先停止旧实例；同一账户只运行一个实例。部署时，将示例中的 `v1.0.0` 替换为已发布的版本标签或 SHA 标签。
 
 ## API
 

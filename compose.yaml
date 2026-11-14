@@ -1,20 +1,27 @@
 services:
   quote-gateway:
-    build: .
+    image: ghcr.io/gofxq/longbridge_quote_gateway:latest
     restart: unless-stopped
-    env_file: .env
     ports:
       - ":12280:12280"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs: ["/tmp:size=16m,mode=1777"]
-    mem_limit: 256m
+
     environment:
-      HTTP_ADDR: ":12280"
-      GOMEMLIMIT: 200MiB
+      GATEWAY_TOKEN: "replace_with_your_token"
+      LONGBRIDGE_APP_KEY: "replace_with_your_app_key"
+      LONGBRIDGE_APP_SECRET: "replace_with_your_app_secret"
+      LONGBRIDGE_ACCESS_TOKEN: "replace_with_your_access_token"
+
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - "/tmp:size=16m,mode=1777"
+    mem_limit: 256m
     cpus: 1
     stop_grace_period: 20s
+
     healthcheck:
       test: ["CMD", "/quote-gateway", "healthcheck"]
       interval: 30s
